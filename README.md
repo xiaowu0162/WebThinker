@@ -37,7 +37,7 @@
   <img src="figures/performance.png" width="100%" />
 </p>
 
-Overall performance comparison on **complex real-world problem solving** and **scientific research report generation** tasks is shown above. Our WebThinker-32B with [QwQ-32B](https://huggingface.co/Qwen/QwQ-32B) as backbone reasoning model achieves the superior performance on both tasks.
+Overall performance comparison on **complex real-world problem solving** and **scientific research report generation** tasks is shown above. Our WebThinker-32B with QwQ-32B as backbone reasoning model achieves the superior performance on both tasks.
 
 ### ✨ The WebThinker Framework
 
