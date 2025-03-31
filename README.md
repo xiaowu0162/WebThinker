@@ -25,11 +25,6 @@
 
 
 
-
-## 💡 Overview
-
-**WebThinker** is a deep research framework fully powered by large reasoning models (LRMs). It is designed to **autonomously search,** **deeply explore web pages,** and **draft research reports**, all within its thinking process. Moving away from traditional agents that follow a predefined workflow, WebThinker enables the large reasoning model itself to perform actions on its own during thinking, achieving **end-to-end task execution** in a single generation.
-
 ### 🎬 Demo
 
 <div align="center">
@@ -39,6 +34,10 @@
   </details>
 </div>
 
+
+## 💡 Overview
+
+**WebThinker** is a deep research framework fully powered by large reasoning models (LRMs). It is designed to **autonomously search,** **deeply explore web pages,** and **draft research reports**, all within its thinking process. Moving away from traditional agents that follow a predefined workflow, WebThinker enables the large reasoning model itself to perform actions on its own during thinking, achieving **end-to-end task execution** in a single generation.
 
 ### 📊 Overall Performance
 
