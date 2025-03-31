@@ -17,7 +17,7 @@
 
 ## 📣 Latest News
 - **03/31/2025**: The Notion for WebThinker is available. You can access it [here](https://www.notion.so/WebThinker-Empowering-Large-Reasoning-Models-with-Deep-Research-Capability-d13158a27d924a4b9df7f9ab94066b64) for technical and experimental details.
-- **03/31/2025**: The code has been released. You can now apply WebThinker to perform deep research with just open-source reasoning models.
+- **03/31/2025**: The code has been released. You can now apply WebThinker to perform deep research with open-source reasoning models.
 
 ## ✏️ To Do List
 - [ ] Release details for model training, including methodology, datasets, checkpoints, etc.
