@@ -202,7 +202,7 @@ If you find this work helpful, please cite our paper:
 ```bibtex
 @misc{Li2025webthinker,
   title={WebThinker: Empowering Large Reasoning Models with Deep Research Capability},
-  author={Xiaoxi Li, Jiajie Jin, Guanting Dong, Hongjin Qian, Yutao Zhu, Yongkang Wu and Zhicheng Dou},
+  author={Xiaoxi Li, Jiajie Jin, Guanting Dong, Hongjin Qian, Yutao Zhu, Yongkang Wu, Jirong Wen and Zhicheng Dou},
   year={2025},
   howpublished={\url{https://www.notion.so/WebThinker-Empowering-Large-Reasoning-Models-with-Deep-Research-Capability-d13158a27d924a4b9df7f9ab94066b64}},
   note={Notion Blog}
