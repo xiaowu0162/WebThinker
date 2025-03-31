@@ -30,6 +30,12 @@
 
 **WebThinker** is a deep research framework fully powered by large reasoning models (LRMs). It is designed to **autonomously search,** **deeply explore web pages,** and **draft research reports**, all within its thinking process. Moving away from traditional agents that follow a predefined workflow, WebThinker enables the large reasoning model itself to perform actions on its own during thinking, achieving **end-to-end task execution** in a single generation.
 
+### 🎬 Demo
+
+<div align="center">
+  <video src="https://github.com/user-attachments/assets/a38e82ec-5aed-4efe-a8b8-e9ee2d97e9b9" />
+</div>
+
 
 ### 📊 Overall Performance
 
@@ -142,6 +148,15 @@ python scripts/run_web_thinker_report.py \
 - `--aux_api_base_url`: Base URL for the auxiliary model API.
 - `--aux_model_name`: Name of the auxiliary model to use.
 
+### Run Demo
+
+You can run the demo we have created with the following command, and we will conduct in-depth exploration and thinking based on the questions you input.
+```bash
+cd demo
+streamlit run_demo.py
+```
+
+**Note**: Before running, it is necessary to configure the relevant parameters in `demo/settings.py`.
 
 ### Benchmarks
 
