@@ -33,7 +33,10 @@
 ### 🎬 Demo
 
 <div align="center">
-  <video src="https://github.com/user-attachments/assets/a38e82ec-5aed-4efe-a8b8-e9ee2d97e9b9" />
+  <details>
+    <summary>Click to view demo video</summary>
+    <video src="https://github.com/user-attachments/assets/a38e82ec-5aed-4efe-a8b8-e9ee2d97e9b9" />
+  </details>
 </div>
 
 
