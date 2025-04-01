@@ -1,5 +1,5 @@
 
-<h1 align="center"> 🌐 WebThinker: Empowering Large Reasoning Models</br> with Deep Research Capability</a></h1>
+<h1 align="center"> 🌐 WebThinker: Empowering Large Reasoning Models with Deep Research Capability</a></h1>
 
 
 <div align="center"> 
