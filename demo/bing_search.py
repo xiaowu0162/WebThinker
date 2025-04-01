@@ -190,16 +190,6 @@ def extract_text_from_url(url, use_jina=False, jina_api_key=None, snippet: Optio
 
                 # Check if content has error indicators
                 has_error = (any(indicator.lower() in response.text.lower() for indicator in error_indicators) and len(response.text.split()) < 64) or response.text == ''
-                # if has_error:
-                #     # If content has error, use WebParserClient as fallback
-                #     client = WebParserClient("http://183.174.229.164:1241")
-                #     results = client.parse_urls([url])
-                #     if results and results[0]["success"]:
-                #         text = results[0]["content"]
-                #     else:
-                #         error_msg = results[0].get("error", "Unknown error") if results else "No results returned"
-                #         return f"WebParserClient error: {error_msg}"
-                
                 if keep_links:
                     # Clean and extract main content
                     # Remove script, style tags etc
