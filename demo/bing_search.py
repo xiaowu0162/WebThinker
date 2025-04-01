@@ -223,14 +223,8 @@ def extract_text_from_url(url, use_jina=False, jina_api_key=None, snippet: Optio
                 else:
                     text = soup.get_text(separator=' ', strip=True)
             except Exception as e:
-                # If normal extraction fails, try using WebParserClient
-                client = WebParserClient("http://183.174.229.164:1241")
-                results = client.parse_urls([url])
-                if results and results[0]["success"]:
-                    text = results[0]["content"]
-                else:
-                    error_msg = results[0].get("error", "Unknown error") if results else "No results returned"
-                    return f"WebParserClient error: {error_msg}"
+                error_msg = results[0].get("error", "Unknown error") if results else "No results returned"
+                return f"WebParserClient error: {error_msg}"
 
         if snippet:
             success, context = extract_snippet_with_context(text, snippet)
@@ -525,14 +519,8 @@ async def extract_text_from_url_async(url: str, session: aiohttp.ClientSession, 
                 has_error = (any(indicator.lower() in html.lower() for indicator in error_indicators) and len(html.split()) < 64) or len(html) < 50 or len(html.split()) < 20
                 # has_error = len(html.split()) < 64
                 if has_error:
-                    # If content has error, use WebParserClient as fallback
-                    client = WebParserClient("http://183.174.229.164:1241")
-                    results = client.parse_urls([url])
-                    if results and results[0]["success"]:
-                        text = results[0]["content"]
-                    else:
-                        error_msg = results[0].get("error", "Unknown error") if results else "No results returned"
-                        return f"WebParserClient error: {error_msg}"
+                    error_msg = results[0].get("error", "Unknown error") if results else "No results returned"
+                    return f"WebParserClient error: {error_msg}"
                 else:
                     try:
                         soup = BeautifulSoup(html, 'lxml')
