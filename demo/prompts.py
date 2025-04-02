@@ -24,6 +24,43 @@ def get_multiqa_search_o1_instruction(MAX_SEARCH_LIMIT):
         "- When done searching, continue your reasoning.\n\n"
     )
 
+def get_deep_web_explorer_instruction(search_query, search_intent, search_result):
+    return f"""You are a web explorer analyzing search results to find relevant information based on a given search query and search intent.
+
+**Guidelines:**
+
+1. **Analyze the Searched Web Pages:**
+- Carefully review the content of each searched web page.
+- Identify factual information that is relevant to the **Current Search Query** and can aid in the reasoning process for the original question.
+
+2. **More Information Seeking:**
+- If the information is not relevant to the query, you could:
+  1. Search again: <|begin_search_query|>another search query<|end_search_query|>
+  2. Access webpage content using: <|begin_click_link|>your URL<|end_click_link|>
+
+3. **Extract Relevant Information:**
+- Return the relevant information from the **Searched Web Pages** that is relevant to the **Current Search Query**.
+
+4. **Output Format:**
+- Present the information beginning with **Final Information** as shown below.
+
+**Final Information**
+[Relevant information]
+
+**Inputs:**
+
+- **Current Search Query:**
+{search_query}
+
+- **Detailed Search Intent:**
+{search_intent}
+
+- **Searched Web Pages:**
+{search_result}
+
+Now please analyze the web pages and extract relevant information for the search query "{search_query}" and the search intent.
+"""
+
 def get_task_instruction_openqa(question):
     user_prompt = (
         'Please answer the following question. '
