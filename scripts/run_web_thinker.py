@@ -103,7 +103,7 @@ def parse_args():
     parser.add_argument('--api_base_url', type=str, required=True, help="Base URL for the API endpoint")
     parser.add_argument('--aux_api_base_url', type=str, required=True, help="Base URL for the auxiliary model API endpoint")
     parser.add_argument('--model_name', type=str, default="QwQ-32B", help="Name of the model to use")
-    parser.add_argument('--aux_model_name', type=str, default="search-agent", help="Name of the auxiliary model to use")
+    parser.add_argument('--aux_model_name', type=str, default="Qwen2.5-72B-Instruct", help="Name of the auxiliary model to use")
     parser.add_argument('--concurrent_limit', type=int, default=32, help="Maximum number of concurrent API calls")
     parser.add_argument('--lora_name', type=str, default=None, help="Name of the LoRA adapter to load")
     parser.add_argument('--lora_path', type=str, default=None, help="Path to the LoRA weights")

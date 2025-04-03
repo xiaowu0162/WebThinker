@@ -21,6 +21,10 @@ import chardet
 import random
 
 
+# ----------------------- Set your WebParserClient URL -----------------------
+WebParserClient_url = None
+
+
 # ----------------------- Custom Headers -----------------------
 headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
@@ -190,9 +194,9 @@ def extract_text_from_url(url, use_jina=False, jina_api_key=None, snippet: Optio
 
                 # Check if content has error indicators
                 has_error = (any(indicator.lower() in response.text.lower() for indicator in error_indicators) and len(response.text.split()) < 64) or response.text == ''
-                if has_error:
+                if has_error and WebParserClient_url is not None:
                     # If content has error, use WebParserClient as fallback
-                    client = WebParserClient("http://183.174.229.164:1241")
+                    client = WebParserClient(WebParserClient_url)
                     results = client.parse_urls([url])
                     if results and results[0]["success"]:
                         text = results[0]["content"]
@@ -233,8 +237,11 @@ def extract_text_from_url(url, use_jina=False, jina_api_key=None, snippet: Optio
                     else:
                         text = soup.get_text(separator=' ', strip=True)
             except Exception as e:
+                if WebParserClient_url is None:
+                    # If WebParserClient is not available, return error message
+                    return f"Error extracting content: {str(e)}"
                 # If normal extraction fails, try using WebParserClient
-                client = WebParserClient("http://183.174.229.164:1241")
+                client = WebParserClient(WebParserClient_url)
                 results = client.parse_urls([url])
                 if results and results[0]["success"]:
                     text = results[0]["content"]
@@ -534,9 +541,9 @@ async def extract_text_from_url_async(url: str, session: aiohttp.ClientSession, 
                 # 检查是否有错误指示
                 has_error = (any(indicator.lower() in html.lower() for indicator in error_indicators) and len(html.split()) < 64) or len(html) < 50 or len(html.split()) < 20
                 # has_error = len(html.split()) < 64
-                if has_error:
+                if has_error and WebParserClient_url is not None:
                     # If content has error, use WebParserClient as fallback
-                    client = WebParserClient("http://183.174.229.164:1241")
+                    client = WebParserClient(WebParserClient_url)
                     results = client.parse_urls([url])
                     if results and results[0]["success"]:
                         text = results[0]["content"]
