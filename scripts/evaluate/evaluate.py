@@ -6,8 +6,10 @@ from collections import Counter
 import string
 import os, time
 from collections import defaultdict
-from lcb_runner.evaluation import codegen_metrics
-from utils.math_equivalence import is_equiv
+# from lcb_runner.evaluation import codegen_metrics
+import sys
+sys.path.append('./scripts/utils')
+from math_equivalence import is_equiv
 from openai import OpenAI, AsyncOpenAI
 import asyncio
 from typing import List
@@ -133,7 +135,7 @@ async def llm_evaluate_equivalence_batch(
     Evaluate multiple answer pairs concurrently using LLM
     """
     if api_base_url is None:
-        api_base_url = "http://39.101.64.147:28706/chat/v1"
+        api_base_url = None
     if model_name is None:
         model_name = "Qwen2.5-72B-Instruct"
 
@@ -248,7 +250,7 @@ def evaluate_predictions(output, labeled_answer, mode='math', use_llm=False, que
     return final_metric, pred_answer
 
 
-def run_evaluation(filtered_data, input_list, output_list, task_type, output_dir, output_metrics_path, output_metrics_overall_path, use_llm=False, extract_answer=False, domain_fields=None):
+def run_evaluation(filtered_data, input_list, output_list, task_type, output_dir, output_metrics_path, output_metrics_overall_path, use_llm=False, extract_answer=False, domain_fields=None, api_base_url=None, model_name=None):
     # Initialize domain metrics dictionary
     domain_metrics = defaultdict(lambda: {
         'total': 0,
@@ -309,36 +311,36 @@ def run_evaluation(filtered_data, input_list, output_list, task_type, output_dir
             item['Pred_Answer'] = pred_code
             item['Question'] = input_prompt
 
-        # Call codegen_metrics with pass@1
-        metrics, results, final_metadata = codegen_metrics(
-            samples_list,
-            generations_list,
-            k_list=[1],  # Evaluate the top 1 generated result
-            num_process_evaluate=10,   # Parallel evaluation
-            timeout=10,  # Set timeout to 10 seconds
-            debug=False,  # Enable debug mode
-        )
+        # # Call codegen_metrics with pass@1
+        # metrics, results, final_metadata = codegen_metrics(
+        #     samples_list,
+        #     generations_list,
+        #     k_list=[1],  # Evaluate the top 1 generated result
+        #     num_process_evaluate=10,   # Parallel evaluation
+        #     timeout=10,  # Set timeout to 10 seconds
+        #     debug=False,  # Enable debug mode
+        # )
 
-        # Extract pass@1
-        pass_at_1 = metrics.get('pass@1', 0.0)
-        detail_pass_at_1 = metrics['detail']['pass@1']
+        # # Extract pass@1
+        # pass_at_1 = metrics.get('pass@1', 0.0)
+        # detail_pass_at_1 = metrics['detail']['pass@1']
 
-        for item, pass1, res, meta in zip(filtered_data, detail_pass_at_1.values(), results.values(), final_metadata):
-            item['Metrics'] = {'pass@1': pass1}
-            item['Results'] = res
-            item['Final_metadata'] = meta
+        # for item, pass1, res, meta in zip(filtered_data, detail_pass_at_1.values(), results.values(), final_metadata):
+        #     item['Metrics'] = {'pass@1': pass1}
+        #     item['Results'] = res
+        #     item['Final_metadata'] = meta
 
         # Compute overall pass@1
         overall_metrics = {
-            'pass@1': pass_at_1,
+            'pass@1': 0.0, # pass_at_1,
             'num_valid_answer': f'{num_valid_answer} of {len(input_list)}',
         }
 
         # Add domain-specific metrics collection
-        for item, pass1 in zip(filtered_data, detail_pass_at_1.values()):
+        for item in filtered_data:
             domain = get_domain(item)
             domain_metrics[domain]['total'] += 1
-            domain_metrics[domain]['pass@1'].append(pass1)
+            domain_metrics[domain]['pass@1'].append(0.0)
 
     elif task_type in ['math', 'choose', 'qa']:
         # Evaluation for math/qa tasks
@@ -418,7 +420,9 @@ def run_evaluation(filtered_data, input_list, output_list, task_type, output_dir
                 questions=questions_for_llm,
                 labeled_answers=labeled_answers_for_llm,
                 pred_answers=pred_answers_for_llm,
-                extract_answer=extract_answer
+                extract_answer=extract_answer,
+                api_base_url=api_base_url,
+                model_name=model_name
             ))
             
             # Update metrics with LLM results
@@ -529,6 +533,8 @@ if __name__ == "__main__":
         output_metrics_path=output_metrics_path,
         output_metrics_overall_path=output_metrics_overall_path,
         use_llm=args.use_llm,
+        api_base_url=args.api_base_url,
+        model_name=args.model_name,
         extract_answer=args.extract_answer,
         domain_fields=DOMAIN_FIELDS  # Pass the domain fields to run_evaluation
     )
