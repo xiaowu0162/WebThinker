@@ -89,9 +89,9 @@ def parse_args():
     parser.add_argument('--min_p', type=float, default=0.05, help="Minimum p sampling parameter.")
     parser.add_argument('--top_k_sampling', type=int, default=20, help="Top-k sampling parameter.")
     parser.add_argument('--repetition_penalty', type=float, default=1.05, help="Repetition penalty. If not set, defaults based on the model.")
-    parser.add_argument('--max_tokens', type=int, default=32768, help="Maximum number of tokens to generate. If not set, defaults based on the model and dataset.")
+    parser.add_argument('--max_tokens', type=int, default=40960, help="Maximum number of tokens to generate. If not set, defaults based on the model and dataset.")
 
-    parser.add_argument('--max_search_limit', type=int, default=10, help="Maximum number of searches per question.")
+    parser.add_argument('--max_search_limit', type=int, default=20, help="Maximum number of searches per question.")
     parser.add_argument('--top_k', type=int, default=10, help="Maximum number of search documents to return.")
     parser.add_argument('--keep_links', action='store_true', default=False, help="Whether to keep links in fetched web content")
     parser.add_argument('--use_jina', action='store_true', help="Whether to use Jina API for document fetching.")
@@ -103,7 +103,7 @@ def parse_args():
     parser.add_argument('--api_base_url', type=str, required=True, help="Base URL for the API endpoint")
     parser.add_argument('--aux_api_base_url', type=str, required=True, help="Base URL for the auxiliary model API endpoint")
     parser.add_argument('--model_name', type=str, default="QwQ-32B", help="Name of the model to use")
-    parser.add_argument('--aux_model_name', type=str, default="Qwen2.5-72B-Instruct", help="Name of the auxiliary model to use")
+    parser.add_argument('--aux_model_name', type=str, default="search-agent", help="Name of the auxiliary model to use")
     parser.add_argument('--concurrent_limit', type=int, default=32, help="Maximum number of concurrent API calls")
     parser.add_argument('--lora_name', type=str, default=None, help="Name of the LoRA adapter to load")
     parser.add_argument('--lora_path', type=str, default=None, help="Path to the LoRA weights")
@@ -214,7 +214,7 @@ async def generate_deep_web_explorer(
     output = ""
     original_prompt = ""
     total_tokens = len(prompt.split())  # Track total tokens including prompt
-    MAX_TOKENS = 20000
+    MAX_TOKENS = 30000
     MAX_INTERACTIONS = 10  # Maximum combined number of searches and clicks
     clicked_urls = set()  # Track clicked URLs
     executed_search_queries = set()  # Track executed search queries
@@ -253,9 +253,10 @@ async def generate_deep_web_explorer(
         # Check for search query
         if response.rstrip().endswith(END_SEARCH_QUERY):
             new_query = extract_between(response, BEGIN_SEARCH_QUERY, END_SEARCH_QUERY)
+            total_interactions += 1
+            if new_query is None or END_SEARCH_QUERY in new_query:
+                continue
             if new_query:
-                total_interactions += 1
-
                 if new_query in executed_search_queries:
                     # If search query was already executed, append message and continue
                     search_result = f"\n{BEGIN_SEARCH_RESULT}\nYou have already searched for this query. Please use the previously found information.\n{END_SEARCH_RESULT}\n"
@@ -293,6 +294,7 @@ async def generate_deep_web_explorer(
         elif response.rstrip().endswith(END_CLICK_LINK):
             url = extract_between(response, BEGIN_CLICK_LINK, END_CLICK_LINK)
             # click_intent = extract_between(response, BEGIN_CLICK_INTENT, END_CLICK_INTENT)
+            total_interactions += 1
             _, click_intent = await generate_response(
                 client=aux_client,
                 model_name=args.aux_model_name,
@@ -301,10 +303,9 @@ async def generate_deep_web_explorer(
             )
 
             if url and click_intent:
-                total_interactions += 1
                 if url in clicked_urls:
                     # If URL was already clicked, append message
-                    click_result = f"\n{BEGIN_CLICK_RESULT}\nYou have already clicked this URL.\n{END_CLICK_RESULT}\nOK, let me use the previously found information."
+                    click_result = f"\n{BEGIN_CLICK_RESULT}\nYou have already clicked this URL.\n{END_CLICK_RESULT}\n"
                     output += click_result
                     prompt += output
                     total_tokens += len(click_result.split())
@@ -394,7 +395,7 @@ async def process_single_sequence(
     """Process a single sequence through its entire reasoning chain with MAX_TOKENS limit"""
     
     # 初始化 token 计数器，初始值设为 prompt 的 token 数（简单用 split() 作为近似）
-    MAX_TOKENS = 20000
+    MAX_TOKENS = 40000
     total_tokens = len(seq['prompt'].split())
     
     # Initialize web explorer interactions list
@@ -431,18 +432,18 @@ async def process_single_sequence(
             break
         
         search_query = extract_between(response, BEGIN_SEARCH_QUERY, END_SEARCH_QUERY)
+        seq['search_count'] += 1
 
         if seq['search_count'] < args.max_search_limit and total_tokens < MAX_TOKENS:
-            if search_query is None or len(search_query) <= 5: # 太短了，不合法的query
+            if search_query is None or len(search_query) <= 5 or END_SEARCH_QUERY in search_query: # 太短了，不合法的query
                 continue
 
             if search_query in seq['executed_search_queries']:
                 # If search query was already executed, append message and continue
-                append_text = f"\n\n{BEGIN_SEARCH_RESULT}You have already searched for this query.{END_SEARCH_RESULT}\n\nOK, let me use the previously found information."
+                append_text = f"\n\n{BEGIN_SEARCH_RESULT}You have already searched for this query.{END_SEARCH_RESULT}\n\n"
                 seq['prompt'] += append_text
                 seq['output'] += append_text
                 seq['history'].append(append_text)
-                seq['search_count'] += 1
                 total_tokens += len(append_text.split())
                 continue
 
@@ -553,7 +554,6 @@ async def process_single_sequence(
             seq['output'] += append_text
             seq['history'].append(append_text)
             
-            seq['search_count'] += 1
             seq['executed_search_queries'].add(search_query)
             total_tokens += len(append_text.split())
             
