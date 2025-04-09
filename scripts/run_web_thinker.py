@@ -89,7 +89,7 @@ def parse_args():
     parser.add_argument('--min_p', type=float, default=0.05, help="Minimum p sampling parameter.")
     parser.add_argument('--top_k_sampling', type=int, default=20, help="Top-k sampling parameter.")
     parser.add_argument('--repetition_penalty', type=float, default=1.05, help="Repetition penalty. If not set, defaults based on the model.")
-    parser.add_argument('--max_tokens', type=int, default=40960, help="Maximum number of tokens to generate. If not set, defaults based on the model and dataset.")
+    parser.add_argument('--max_tokens', type=int, default=81920, help="Maximum number of tokens to generate. If not set, defaults based on the model and dataset.")
 
     parser.add_argument('--max_search_limit', type=int, default=20, help="Maximum number of searches per question.")
     parser.add_argument('--top_k', type=int, default=10, help="Maximum number of search documents to return.")
@@ -155,6 +155,7 @@ async def generate_response(
     model_name: str = "QwQ-32B",
     stop: List[str] = [END_SEARCH_QUERY],
     retry_limit: int = 3,
+    bad_words: List[str] = [f"{END_SEARCH_RESULT}\n\n{tokenizer.eos_token}"],
 ) -> Tuple[str, str]:
     """Generate a single response with retry logic"""
     for attempt in range(retry_limit):
@@ -180,6 +181,7 @@ async def generate_response(
                         'top_k': top_k,
                         'include_stop_str_in_output': True,
                         'repetition_penalty': repetition_penalty,
+                        'bad_words': bad_words,
                         # 'min_p': min_p
                     },
                     timeout=3600,
@@ -187,7 +189,11 @@ async def generate_response(
                 return formatted_prompt, response.choices[0].text
         except Exception as e:
             print(f"Generate Response Error occurred: {e}, Starting retry attempt {attempt + 1}")
-            print(prompt)
+            # print(prompt)
+            if "maximum context length" in str(e).lower():
+                # If length exceeds limit, reduce max_tokens by half
+                max_tokens = max_tokens // 2
+                print(f"Reducing max_tokens to {max_tokens}")
             if attempt == retry_limit - 1:
                 print(f"Failed after {retry_limit} attempts: {e}")
                 return "", ""
@@ -595,11 +601,12 @@ async def process_single_sequence(
                 temperature=args.temperature,
                 top_p=args.top_p,
                 max_tokens=args.max_tokens,
-                repetition_penalty=1.2,
+                repetition_penalty=1.1,
                 top_k=args.top_k_sampling,
                 min_p=args.min_p,
                 model_name=args.model_name,
-                generate_mode="completion"
+                generate_mode="completion",
+                bad_words=[f"{END_SEARCH_RESULT}\n\n{tokenizer.eos_token}", f"{END_SEARCH_QUERY}{tokenizer.eos_token}"]
             )
             
             seq['output'] += final_response
