@@ -38,6 +38,7 @@ from prompts.prompts import (
     get_code_search_o1_instruction, 
     get_singleqa_search_o1_instruction, 
     get_multiqa_search_o1_instruction, 
+    get_deepseek_multiqa_search_o1_instruction,
     get_task_instruction_openqa, 
     get_task_instruction_math, 
     get_task_instruction_multi_choice, 
@@ -45,8 +46,9 @@ from prompts.prompts import (
 )
 from transformers import AutoTokenizer
 
-tokenizer = AutoTokenizer.from_pretrained("YOUR_QWQ_PATH")
-aux_tokenizer = AutoTokenizer.from_pretrained("YOUR_QWEN2.5_PATH")
+# tokenizer = AutoTokenizer.from_pretrained("/share/project/llm/QwQ-32B")
+# # tokenizer = AutoTokenizer.from_pretrained("/share/project/llm/DeepSeek-R1-Distill-Qwen-32B")
+# aux_tokenizer = AutoTokenizer.from_pretrained("/share/project/llm/Qwen2.5-72B-Instruct")
 
 
 # Define special tokens
@@ -77,6 +79,15 @@ error_indicators = [
     'Please enable cookies',
 ]
 
+invalid_search_queries = [
+    "and end with",
+    "search query",
+    "query",
+    "your query here",
+    "your query",
+    "your search query",
+]
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Run Search-o1 for various datasets and models.")
     parser.add_argument('--single_question', type=str, default=None, help="Single question to process instead of dataset")
@@ -103,12 +114,20 @@ def parse_args():
     parser.add_argument('--api_base_url', type=str, required=True, help="Base URL for the API endpoint")
     parser.add_argument('--aux_api_base_url', type=str, required=True, help="Base URL for the auxiliary model API endpoint")
     parser.add_argument('--model_name', type=str, default="QwQ-32B", help="Name of the model to use")
-    parser.add_argument('--aux_model_name', type=str, default="search-agent", help="Name of the auxiliary model to use")
+    parser.add_argument('--aux_model_name', type=str, default="Qwen2.5-32B-Instruct", help="Name of the auxiliary model to use")
     parser.add_argument('--concurrent_limit', type=int, default=32, help="Maximum number of concurrent API calls")
     parser.add_argument('--lora_name', type=str, default=None, help="Name of the LoRA adapter to load")
     parser.add_argument('--lora_path', type=str, default=None, help="Path to the LoRA weights")
+    parser.add_argument('--tokenizer_path', type=str, default="/share/project/llm/QwQ-32B", help="Path to the main tokenizer")
+    parser.add_argument('--aux_tokenizer_path', type=str, default="/share/project/llm/Qwen2.5-32B-Instruct", help="Path to the auxiliary tokenizer")
+    parser.add_argument('--api_key', type=str, default="empty", help="API key for the main model")
+    parser.add_argument('--aux_api_key', type=str, default="empty", help="API key for the auxiliary model")
     return parser.parse_args()
 
+# Initialize tokenizers
+args = parse_args()
+tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path)
+aux_tokenizer = AutoTokenizer.from_pretrained(args.aux_tokenizer_path)
 
 
 def extract_between(text, start_marker, end_marker):
@@ -163,10 +182,12 @@ async def generate_response(
             async with semaphore:
                 if generate_mode == "chat":
                     messages = [{"role": "user", "content": prompt}]
-                    if 'qwq' in model_name.lower():
+                    if 'qwq' in model_name.lower() or 'deepseek' in model_name.lower() or 'r1' in model_name.lower():
                         formatted_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
                     else:
                         formatted_prompt = aux_tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                    if ('deepseek' in model_name.lower() or 'r1' in model_name.lower()) and "<think>\n" not in formatted_prompt:
+                        formatted_prompt = formatted_prompt + "<think>\n"
                 else:
                     formatted_prompt = prompt
 
@@ -181,7 +202,7 @@ async def generate_response(
                         'top_k': top_k,
                         'include_stop_str_in_output': True,
                         'repetition_penalty': repetition_penalty,
-                        'bad_words': bad_words,
+                        # 'bad_words': bad_words,
                         # 'min_p': min_p
                     },
                     timeout=3600,
@@ -231,7 +252,8 @@ async def generate_deep_web_explorer(
     while True:
         # Generate next response
         formatted_prompt, response = await generate_response(
-            client=client,
+            client=client if 'qwq' in args.model_name.lower() else aux_client,
+            model_name=args.model_name if 'qwq' in args.model_name.lower() else args.aux_model_name,
             prompt=prompt,
             semaphore=semaphore,
             generate_mode="chat" if first_generation else "completion",
@@ -241,7 +263,6 @@ async def generate_deep_web_explorer(
             repetition_penalty=args.repetition_penalty,
             top_k=args.top_k_sampling,
             min_p=args.min_p,
-            model_name=args.model_name,
             stop=[END_SEARCH_QUERY, END_CLICK_LINK],
         )
 
@@ -260,12 +281,12 @@ async def generate_deep_web_explorer(
         if response.rstrip().endswith(END_SEARCH_QUERY):
             new_query = extract_between(response, BEGIN_SEARCH_QUERY, END_SEARCH_QUERY)
             total_interactions += 1
-            if new_query is None or END_SEARCH_QUERY in new_query:
+            if new_query is None or END_SEARCH_QUERY in new_query or len(new_query) <= 5 or new_query in invalid_search_queries:
                 continue
             if new_query:
                 if new_query in executed_search_queries:
                     # If search query was already executed, append message and continue
-                    search_result = f"\n{BEGIN_SEARCH_RESULT}\nYou have already searched for this query. Please use the previously found information.\n{END_SEARCH_RESULT}\n"
+                    search_result = f"\n{BEGIN_SEARCH_RESULT}\nYou have already searched for this query. Please use the previously found information.\n{END_SEARCH_RESULT}\n\nOkay,"
                     output += search_result
                     prompt += output
                     total_tokens += len(search_result.split())
@@ -304,6 +325,7 @@ async def generate_deep_web_explorer(
             _, click_intent = await generate_response(
                 client=aux_client,
                 model_name=args.aux_model_name,
+                max_tokens=1000,
                 prompt=get_click_intent_instruction(output),
                 semaphore=semaphore,
             )
@@ -311,7 +333,7 @@ async def generate_deep_web_explorer(
             if url and click_intent:
                 if url in clicked_urls:
                     # If URL was already clicked, append message
-                    click_result = f"\n{BEGIN_CLICK_RESULT}\nYou have already clicked this URL.\n{END_CLICK_RESULT}\n"
+                    click_result = f"\n{BEGIN_CLICK_RESULT}\nYou have already clicked this URL.\n{END_CLICK_RESULT}\n\nOkay,"
                     output += click_result
                     prompt += output
                     total_tokens += len(click_result.split())
@@ -371,7 +393,8 @@ async def generate_deep_web_explorer(
         output += f"\n{BEGIN_CLICK_RESULT}\nYou have reached the limit for clicking links.\n{END_CLICK_RESULT}\n\nOK, I will now provide the final information based on my collected information.\n\n**Final Information:**"
         prompt += output
         _, final_response = await generate_response(
-            client=client,
+            client=client if 'qwq' in args.model_name.lower() else aux_client,
+            model_name=args.model_name if 'qwq' in args.model_name.lower() else args.aux_model_name,
             prompt=prompt,
             semaphore=semaphore,
             generate_mode="completion",
@@ -381,7 +404,6 @@ async def generate_deep_web_explorer(
             repetition_penalty=1.2,
             top_k=args.top_k_sampling,
             min_p=args.min_p,
-            model_name=args.model_name,
         )
         output += final_response
 
@@ -441,12 +463,12 @@ async def process_single_sequence(
         seq['search_count'] += 1
 
         if seq['search_count'] < args.max_search_limit and total_tokens < MAX_TOKENS:
-            if search_query is None or len(search_query) <= 5 or END_SEARCH_QUERY in search_query: # 太短了，不合法的query
+            if search_query is None or len(search_query) <= 5 or END_SEARCH_QUERY in search_query or search_query in invalid_search_queries: # 不合法的query
                 continue
 
             if search_query in seq['executed_search_queries']:
                 # If search query was already executed, append message and continue
-                append_text = f"\n\n{BEGIN_SEARCH_RESULT}You have already searched for this query.{END_SEARCH_RESULT}\n\n"
+                append_text = f"\n\n{BEGIN_SEARCH_RESULT}You have already searched for this query.{END_SEARCH_RESULT}\n\nOkay,"
                 seq['prompt'] += append_text
                 seq['output'] += append_text
                 seq['history'].append(append_text)
@@ -456,6 +478,7 @@ async def process_single_sequence(
             _, search_intent = await generate_response(
                 client=aux_client,
                 model_name=args.aux_model_name,
+                max_tokens=1000,
                 prompt=get_search_intent_instruction(seq['output']),
                 semaphore=semaphore,
             )
@@ -646,8 +669,6 @@ async def unload_lora_adapter(api_base_url: str, lora_name: str) -> bool:
 
 
 async def main_async():
-    args = parse_args()
-
     # Set random seed
     if args.seed is None:
         args.seed = int(time.time())
@@ -666,19 +687,19 @@ async def main_async():
         args.dataset_name = 'custom'  # Set dataset name to custom for single questions
     else:
         # Original dataset loading logic
-        if args.dataset_name == 'livecode':
-            data_path = f'./data/LiveCodeBench/{args.split}.json'
-        elif args.dataset_name == 'supergpqa':
+        if args.dataset_name == 'supergpqa':
             data_path = f'./data/SuperGPQA/{args.split}.json'
         elif args.dataset_name == 'webwalker':
             data_path = f'./data/WebWalkerQA/{args.split}.json'
         elif args.dataset_name == 'openthoughts':
             data_path = f'./data/OpenThoughts/{args.split}.json'
+        elif args.dataset_name == 'naturalreasoning':
+            data_path = f'./data/NaturalReasoning/{args.split}.json'
         elif args.dataset_name in ['math500', 'gpqa', 'aime', 'amc', 'gaia', 'hle', 'limo']:
             data_path = f'./data/{args.dataset_name.upper()}/{args.split}.json'
         else:
-            data_path = f'./data/QA_Datasets/{args.dataset_name}.json'
-
+            data_path = f'./data/{args.dataset_name}.json'
+        
         print('-----------------------')
         print(f'Using {args.dataset_name} {args.split} set.')
         print('-----------------------')
@@ -706,6 +727,8 @@ async def main_async():
     # Define output directory
     if 'qwq' in args.model_name.lower():
         model_short_name = 'qwq'
+        if 'webthinker' in args.model_name.lower():
+            model_short_name = f'webthinker{args.model_name.split("webthinker")[-1]}'
     elif 'deepseek' in args.model_name.lower():
         if 'llama-8b' in args.model_name.lower():
             model_short_name = 'dpsk-llama-8b'
@@ -715,24 +738,27 @@ async def main_async():
             model_short_name = 'dpsk-qwen-1.5b'
         elif 'qwen-7b' in args.model_name.lower():
             model_short_name = 'dpsk-qwen-7b'
+        elif 'qwen-14b' in args.model_name.lower():
+            model_short_name = 'dpsk-qwen-14b'
         elif 'qwen-32b' in args.model_name.lower():
             model_short_name = 'dpsk-qwen-32b'
-    elif 'sky-t1' in args.model_name.lower():
-        model_short_name = 'sky-t1'
+        if 'webthinker' in args.model_name.lower():
+            model_short_name = f'webthinker{args.model_name.split("webthinker")[-1]}'
     else:
         model_short_name = args.model_name.split('/')[-1].lower().replace('-instruct', '')
 
+    # output_dir = f'./outputs/{args.dataset_name}.{model_short_name}.webthinker'
     output_dir = f'./outputs/{args.dataset_name}.{model_short_name}.webthinker'
     os.makedirs(output_dir, exist_ok=True)
 
     # Initialize the OpenAI client
     client = AsyncOpenAI(
-        api_key="empty",
+        api_key=args.api_key,
         base_url=args.api_base_url,
     )
     # Initialize auxiliary client
     aux_client = AsyncOpenAI(
-        api_key="empty",
+        api_key=args.aux_api_key,
         base_url=args.aux_api_base_url,
     )
     
@@ -750,71 +776,8 @@ async def main_async():
     active_sequences = []
     for item in filtered_data:
         question = item['Question']
-        
-        # Get appropriate instruction and user prompt based on dataset
-        if args.dataset_name in ['nq', 'triviaqa', 'hotpotqa', 'musique', 'bamboogle', '2wiki', 'webwalker', 'gaia', 'hle', 'supergpqa']:
-            if args.dataset_name in ['nq', 'triviaqa']:
-                instruction = get_singleqa_search_o1_instruction(args.max_search_limit)
-            else:
-                instruction = get_multiqa_search_o1_instruction(args.max_search_limit)
-            
-            if 'qwq' in args.model_name.lower() or 'sky-t1' in args.model_name.lower():
-                user_prompt = get_task_instruction_openqa(question, model_name='qwq')
-            elif 'deepseek' in args.model_name.lower():
-                user_prompt = get_task_instruction_openqa(question, model_name='dpsk')
-            else:
-                user_prompt = get_task_instruction_openqa(question)
-
-        elif args.dataset_name in ['openthoughts']:
-            if args.split == 'math':
-                instruction = get_math_search_o1_instruction(args.max_search_limit)
-                user_prompt = get_task_instruction_openqa(question, model_name='qwq')
-            elif args.split == 'code':
-                instruction = get_code_search_o1_instruction(args.max_search_limit)
-                user_prompt = get_task_instruction_code(question, model_name='qwq')
-            elif args.split == 'puzzle':
-                instruction = get_singleqa_search_o1_instruction(args.max_search_limit)
-                user_prompt = get_task_instruction_multi_choice(question, model_name='qwq')
-            else:
-                instruction = get_singleqa_search_o1_instruction(args.max_search_limit)
-                user_prompt = get_task_instruction_openqa(question, model_name='qwq')
-
-        elif args.dataset_name in []:
-            instruction = get_gpqa_web_thinker_instruction(args.max_search_limit)
-            # instruction = get_web_thinker_instruction()
-            user_prompt = get_task_instruction_openqa(question, model_name='qwq')
-
-        elif args.dataset_name in ['math500', 'aime', 'amc', 'limo']:
-            instruction = get_math_search_o1_instruction(args.max_search_limit)
-            if 'qwq' in args.model_name.lower() or 'sky-t1' in args.model_name.lower():
-                user_prompt = get_task_instruction_math(question, model_name='qwq')
-            elif 'deepseek' in args.model_name.lower():
-                user_prompt = get_task_instruction_math(question, model_name='dpsk')
-            else:
-                user_prompt = get_task_instruction_math(question)
-
-        elif args.dataset_name in ['gpqa']:
-            instruction = get_gpqa_web_thinker_instruction(args.max_search_limit)
-            if 'qwq' in args.model_name.lower() or 'sky-t1' in args.model_name.lower():
-                user_prompt = get_task_instruction_multi_choice(question, model_name='qwq')
-            elif 'deepseek' in args.model_name.lower():
-                user_prompt = get_task_instruction_multi_choice(question, model_name='dpsk')
-            elif 'llama' in args.model_name.lower():
-                user_prompt = get_task_instruction_multi_choice(question, model_name='llama')
-            else:
-                user_prompt = get_task_instruction_multi_choice(question)
-
-        elif args.dataset_name == 'livecode':
-            instruction = get_code_search_o1_instruction(args.max_search_limit)
-            question_title = item.get('question_title', '')
-            if 'qwq' in args.model_name.lower() or 'deepseek' in args.model_name.lower() or 'sky-t1' in args.model_name.lower():
-                user_prompt = get_task_instruction_code(question, question_title=question_title, model_name='qwq')
-            else:
-                user_prompt = get_task_instruction_code(question)
-        else:
-            instruction = get_multiqa_search_o1_instruction(args.max_search_limit)
-            user_prompt = get_task_instruction_openqa(question)
-
+        instruction = get_multiqa_search_o1_instruction(args.max_search_limit)
+        user_prompt = get_task_instruction_openqa(question)
         prompt = instruction + user_prompt
         item['prompt'] = prompt
         active_sequences.append({
@@ -886,11 +849,7 @@ async def main_async():
         t = time.localtime()
         random_num = str(random.randint(0, 99)).zfill(2)
         result_json_name = f'{args.split}.{t.tm_mon}.{t.tm_mday},{t.tm_hour}:{t.tm_min}.{random_num}.json'
-        if 'DPO' in args.model_name:
-            result_json_name = f'{args.split}.{t.tm_mon}.{t.tm_mday},{t.tm_hour}:{t.tm_min}.{random_num}.dpo.json'
-        elif 'SFT' in args.model_name:
-            result_json_name = f'{args.split}.{t.tm_mon}.{t.tm_mday},{t.tm_hour}:{t.tm_min}.{random_num}.sft.json'
-        
+
         for item, seq in zip(filtered_data, completed_sequences):
             item['prompt'] = seq['original_prompt']
             item['Output'] = seq['output']
