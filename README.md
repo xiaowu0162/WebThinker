@@ -23,13 +23,10 @@
 <h5 align="center"> If you like our project, please give us a star ⭐ on GitHub for the latest update.</h5>
 
 ## 📣 Latest News
+- **05/01/2025**: 📄 **Our paper is now available on [arXiv](https://arxiv.org/abs/2504.21776) and [Hugging Face](https://huggingface.co/papers/2504.21776)!**
+
 - **03/31/2025**: 🎉 **[WebThinker Notion Page](https://foremost-beechnut-8ed.notion.site/WebThinker-Empowering-Large-Reasoning-Models-with-Deep-Research-Capability-d13158a27d924a4b9df7f9ab94066b64) is now LIVE!** Check out all the technical details and experimental results!
 - **03/31/2025**: 🚀 Released the full codebase! WebThinker is now ready for deep research with open-source reasoning models like QwQ.
-
-## ✏️ To Do List
-- [ ] Release details for model training, including methodology, datasets, checkpoints, etc.
-- [ ] Release the paper for your reference.
-
 
 
 ## 🎬 Demo
