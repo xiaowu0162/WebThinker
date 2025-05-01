@@ -23,8 +23,8 @@
 <h5 align="center"> If you like our project, please give us a star ⭐ on GitHub for the latest update.</h5>
 
 ## 📣 Latest News
-- **05/01/2025**: 📄 **Our paper is now available on [arXiv](https://arxiv.org/abs/2504.21776) and [Hugging Face](https://huggingface.co/papers/2504.21776)!**
-- **03/31/2025**: 🎉 **[WebThinker Notion Page](https://foremost-beechnut-8ed.notion.site/WebThinker-Empowering-Large-Reasoning-Models-with-Deep-Research-Capability-d13158a27d924a4b9df7f9ab94066b64) is now LIVE!** Check out all the technical details and experimental results!
+- **05/01/2025**: 📄 **Our paper is now available on [arXiv](https://arxiv.org/abs/2504.21776) and [Hugging Face](https://huggingface.co/papers/2504.21776).**
+- **03/31/2025**: 🎉 **[WebThinker Notion Page](https://foremost-beechnut-8ed.notion.site/WebThinker-Empowering-Large-Reasoning-Models-with-Deep-Research-Capability-d13158a27d924a4b9df7f9ab94066b64) is now LIVE.** Check out all the details.
 - **03/31/2025**: 🚀 Released the full codebase! WebThinker is now ready for deep research with open-source reasoning models like QwQ.
 
 
@@ -34,10 +34,11 @@
     <video src="https://github.com/user-attachments/assets/a38e82ec-5aed-4efe-a8b8-e9ee2d97e9b9" />
 </div>
 
-
 ## 💡 Overview
 
-**WebThinker** is a deep research framework fully powered by large reasoning models (LRMs). It is designed to **autonomously search,** **deeply explore web pages,** and **draft research reports**, all within its thinking process. Moving away from traditional agents that follow a predefined workflow, WebThinker enables the large reasoning model itself to perform actions on its own during thinking, achieving **end-to-end task execution** in a single generation.
+**WebThinker** is a deep research framework fully powered by large reasoning models (LRMs). WebThinker enables LRMs to **autonomously search**, **deeply explore web pages**, and **draft research reports**, all within their thinking process.
+
+Unlike existing open-source deep search agents that typically employ retrieval-augmented generation (RAG) with predefined workflows, WebThinker allows the reasoning model itself to perform actions during thinking, achieving **end-to-end task execution** in a single generation.
 
 ### 📊 Overall Performance
 
@@ -45,18 +46,18 @@
   <img src="figures/performance.png" width="100%" />
 </p>
 
-Overall performance comparison on **complex real-world problem solving** and **scientific research report generation** tasks is shown above. Our WebThinker-32B with QwQ-32B as backbone reasoning model achieves the superior performance on both tasks.
+As shown above, WebThinker consistently outperforms competing approaches on both knowledge-intensive complex reasoning benchmarks (GPQA, GAIA, WebWalkerQA, HLE) and open-ended reasoning tasks for report generation. Our WebThinker-32B with QwQ-32B as backbone reasoning model achieves superior performance across all tasks.
 
 ### ✨ The WebThinker Framework
 
 ![Model Comparison](figures/framework.png)
 
-**WebThinker** enables reasoning models to autonomously conduct web searches and web page navigations to acquire external knowledge during their reasoning process, facilitating complex real-world problem solving. Furthermore, we also allow LRMs to draft section content while thinking and searching once sufficient information has been gathered, producing comprehensive, customized reports that directly address the user's research questions.
+**WebThinker** enables reasoning models to autonomously conduct web searches and web page navigations to acquire external knowledge during their reasoning process. This approach significantly reduces the time and costs associated with information gathering for researchers in knowledge-intensive fields. Furthermore, WebThinker allows LRMs to draft section content while thinking and searching, producing comprehensive, customized reports that directly address users' research questions.
 
 **Key Features:**
-- We introduce a **Deep Web Explorer** that empowers LRMs to conduct thorough web searches, navigate links, and gather comprehensive information while maintaining reasoning coherence by returning only concise, relevant findings.
-- For scientific reporting, our **Autonomous Think-Search-and-Draft** strategy integrates real-time knowledge seeking with report creation using specialized tools for drafting, reviewing, and editing content—ensuring reports remain coherent and adaptive to new insights.
-- We're also developing **training strategies** by collecting large-scale reasoning trajectory data with search capabilities from complex reasoning datasets. Detailed methods and results is coming.
+- We introduce a **Deep Web Explorer** that empowers LRMs to search, navigate pages by clicking interactive elements (like links or buttons), and extract relevant information. Based on initial search results, the LRM can initiate follow-up searches and traverse deeper links until it collects all relevant information.
+- For scientific reporting, our **Autonomous Think-Search-and-Draft** strategy integrates real-time knowledge seeking with report creation. We equip LRMs with three specialized tools: (1) drafting content for specific chapters, (2) checking the current report, and (3) editing the report—ensuring reports remain comprehensive, coherent, and adaptive to new insights.
+- We're developing **RL-based training strategies** to optimize end-to-end task performance by leveraging large-scale reasoning trajectories from complex tasks. Using accuracy of reasoning, tool usage, and final outputs, we construct preference pairs for online DPO training, enabling the model to progressively improve its research capabilities.
 
 
 
@@ -218,13 +219,23 @@ python scripts/evaluate/evaluate_report.py
 
 If you find this work helpful, please cite our paper:
 ```bibtex
-@misc{Li2025webthinker,
-  title={WebThinker: Empowering Large Reasoning Models with Deep Research Capability},
-  author={Xiaoxi Li and Jiajie Jin and Guanting Dong and Hongjin Qian and Yutao Zhu and Yongkang Wu and Ji-Rong Wen and Zhicheng Dou},
-  year={2025},
-  howpublished={\url{https://www.notion.so/WebThinker-Empowering-Large-Reasoning-Models-with-Deep-Research-Capability-d13158a27d924a4b9df7f9ab94066b64}},
-  note={Notion Blog}
-  year={2025}
+@article{Li2025WebThinker,
+  author       = {Xiaoxi Li and
+                  Jiajie Jin and
+                  Guanting Dong and
+                  Hongjin Qian and
+                  Yutao Zhu and
+                  Yongkang Wu and
+                  Ji{-}Rong Wen and
+                  Zhicheng Dou},
+  title        = {WebThinker: Empowering Large Reasoning Models with Deep Research Capability},
+  journal      = {CoRR},
+  volume       = {abs/2504.21776},
+  year         = {2025},
+  url          = {https://arxiv.org/abs/2504.21776},
+  doi          = {10.48550/ARXIV.2504.21776},
+  eprinttype    = {arXiv},
+  eprint       = {2504.21776}
 }
 ```
 
