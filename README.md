@@ -12,6 +12,12 @@
 <!-- [![X (formerly Twitter) URL](https://img.shields.io/twitter/url?url=https%3A%2F%2Fx.com%2FKevin_GuoweiXu%2Fstatus%2F1858338565463421244)](https://x.com/_akhaliq/status/1877584951840764166?t=fnbTblnqhiPtAyYr1PHbbw&s=19) -->
 </div>
 
+<p align="center">
+🤗 <a href="https://huggingface.co/lixiaoxi45/WebThinker-QwQ-32B" target="_blank">WebThinker-QwQ-32B</a> ｜
+🤗 <a href="https://huggingface.co/lixiaoxi45/WebThinker-R1-7B" target="_blank">WebThinker-R1-7B</a> ｜
+🤗 <a href="https://huggingface.co/lixiaoxi45/WebThinker-R1-14B" target="_blank">WebThinker-R1-14B</a> ｜
+🤗 <a href="https://huggingface.co/lixiaoxi45/WebThinker-R1-32B" target="_blank">WebThinker-R1-32B</a>
+</p>
 
 
 <h5 align="center"> If you like our project, please give us a star ⭐ on GitHub for the latest update.</h5>
