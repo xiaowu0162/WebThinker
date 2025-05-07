@@ -495,7 +495,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Define the list of domain field names to check (in order of priority)
-    DOMAIN_FIELDS = ['Level', 'level', 'category', 'High-level domain', 'difficulty_level', 'field']
+    DOMAIN_FIELDS = ['Level', 'level', 'category', 'High-level domain', 'difficulty_level', 'field', 'problem_topic']
 
     output_path = args.output_path
     output_metrics_path = output_path.replace('.json', '.metrics.json')
