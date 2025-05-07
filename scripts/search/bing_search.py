@@ -194,7 +194,10 @@ def extract_text_from_url(url, use_jina=False, jina_api_key=None, snippet: Optio
 
                 # Check if content has error indicators
                 has_error = (any(indicator.lower() in response.text.lower() for indicator in error_indicators) and len(response.text.split()) < 64) or response.text == ''
-                if has_error and WebParserClient_url is not None:
+                if has_error:
+                    if WebParserClient_url is None:
+                        # If WebParserClient is not available, return error message
+                        return f"Error extracting content: {str(e)}"
                     # If content has error, use WebParserClient as fallback
                     client = WebParserClient(WebParserClient_url)
                     results = client.parse_urls([url])
@@ -541,7 +544,10 @@ async def extract_text_from_url_async(url: str, session: aiohttp.ClientSession, 
                 # 检查是否有错误指示
                 has_error = (any(indicator.lower() in html.lower() for indicator in error_indicators) and len(html.split()) < 64) or len(html) < 50 or len(html.split()) < 20
                 # has_error = len(html.split()) < 64
-                if has_error and WebParserClient_url is not None:
+                if has_error:
+                    if WebParserClient_url is None:
+                        # If WebParserClient is not available, return error message
+                        return f"Error extracting content: {str(e)}"
                     # If content has error, use WebParserClient as fallback
                     client = WebParserClient(WebParserClient_url)
                     results = client.parse_urls([url])
