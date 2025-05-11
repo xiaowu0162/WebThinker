@@ -259,7 +259,25 @@ Currect Article:
 Directly output the title, do not include any other text."""
 
 
+def get_final_report_instruction(question, article):
+    return f"""You are an final-version article editor. Your task is to correct the structure of the following article draft.
 
+Original Question:
+{question}
+
+Current Article:
+{article}
+
+Note:
+- Output the complete final-version article.
+- Remove duplicate or redundant content. If there is no error, just output the original article.
+- Focus on structure only. Do not omit any valid contents/tables in current article.
+
+Output Format:
+```markdown
+The final-version article.
+```
+"""
 
 
 
@@ -278,3 +296,17 @@ Output Format:
 ...
 ```
 """
+
+def get_direct_gen_report_instruction(question):
+    return f"""You are a research assistant. Please write a comprehensive research article based on the following question and answer.
+
+Research Question: {question}
+
+Please write a comprehensive research article in markdown format.
+
+Output Format:
+```markdown
+...
+```
+"""
+
