@@ -25,15 +25,15 @@ def init_env():
 
 async def summarize_thought_chain(env, reasoning_chain):
     client = env.aux_client
-    instruction = '''Please analyze the given model thought chain segment and complete two tasks:
+    instruction = f'''Please analyze the given model thought chain segment and complete two tasks:
     1. Generate a concise title (title) summarizing the current operation in the thought chain. You can add an appropriate emoji icon at the beginning of the title to represent the current action. Use common emojis.
     2. Write a first-person explanation (explain) describing what the thought chain is doing, what problems were encountered, or what the next steps are. If the thought chain mentions specific webpage information or factual information, please include it in the explanation.
 
     Please provide the output in the following JSON format:
-    {"title": "title here", "explain": "explanation here"}
+    {{"title": "title here", "explain": "explanation here"}}
 
     Example:
-    {"title": "🔍 Information Gap Found", "explain": "While the website provided insights about the school's vision, I haven't found specific details about its history and mission. This is an area I need to investigate further to provide a comprehensive overview."}
+    {{"title": "🔍 Information Gap Found", "explain": "While the website provided insights about the school's vision, I haven't found specific details about its history and mission. This is an area I need to investigate further to provide a comprehensive overview."}}
 
     Please ensure the output JSON contains both title and explain.
 
