@@ -454,10 +454,13 @@ class RateLimiter:
         self.time_window = time_window
         self.tokens = rate_limit
         self.last_update = time.time()
-        self.lock = asyncio.Lock()
+        self.lock = None  # Initialize lock to None
 
     async def acquire(self):
         """获取一个令牌，如果没有可用令牌则等待"""
+        if self.lock is None:  # Create lock on first use in an async context
+            self.lock = asyncio.Lock()
+
         async with self.lock:
             while self.tokens <= 0:
                 now = time.time()
