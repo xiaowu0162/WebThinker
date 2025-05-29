@@ -250,10 +250,13 @@ If you find this work helpful, please cite our paper:
   journal      = {CoRR},
   volume       = {abs/2504.21776},
   year         = {2025},
-  url          = {https://arxiv.org/abs/2504.21776},
+  url          = {https://doi.org/10.48550/arXiv.2504.21776},
   doi          = {10.48550/ARXIV.2504.21776},
   eprinttype    = {arXiv},
-  eprint       = {2504.21776}
+  eprint       = {2504.21776},
+  timestamp    = {Sun, 25 May 2025 20:50:43 +0200},
+  biburl       = {https://dblp.org/rec/journals/corr/abs-2504-21776.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
 }
 ```
 
