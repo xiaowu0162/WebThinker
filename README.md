@@ -95,7 +95,8 @@ Now you can run different inference modes using the provided scripts. Below are 
 ```bash
 python scripts/run_web_thinker.py \
     --single_question "What is OpenAI Deep Research?" \
-    --bing_subscription_key "YOUR_BING_SUBSCRIPTION_KEY" \
+    --search_engine "serper" \
+    --serper_api_key "YOUR_GOOGLE_SERPER_API" \
     --api_base_url "YOUR_API_BASE_URL" \
     --model_name "QwQ-32B" \
     --aux_api_base_url "YOUR_AUX_API_BASE_URL" \
@@ -111,7 +112,8 @@ python scripts/run_web_thinker.py \
     --split dev \
     --concurrent_limit 32 \
     --max_search_limit 15 \
-    --bing_subscription_key "YOUR_BING_SUBSCRIPTION_KEY" \
+    --search_engine "serper" \
+    --serper_api_key "YOUR_GOOGLE_SERPER_API" \
     --api_base_url "YOUR_API_BASE_URL" \
     --model_name "QwQ-32B" \
     --aux_api_base_url "YOUR_AUX_API_BASE_URL" \
@@ -126,7 +128,8 @@ python scripts/run_web_thinker.py \
 ```bash
 python scripts/run_web_thinker_report.py \
     --single_question "What are the models of OpenAI and what are the differences?" \
-    --bing_subscription_key "YOUR_BING_SUBSCRIPTION_KEY" \
+    --search_engine "serper" \
+    --serper_api_key "YOUR_GOOGLE_SERPER_API" \
     --api_base_url "YOUR_API_BASE_URL" \
     --model_name "QwQ-32B" \
     --aux_api_base_url "YOUR_AUX_API_BASE_URL" \
@@ -141,7 +144,8 @@ python scripts/run_web_thinker_report.py \
     --dataset_name glaive \
     --split test \
     --concurrent_limit 32 \
-    --bing_subscription_key "YOUR_BING_SUBSCRIPTION_KEY" \
+    --search_engine "serper" \
+    --serper_api_key "YOUR_GOOGLE_SERPER_API" \
     --api_base_url "YOUR_API_BASE_URL" \
     --model_name "QwQ-32B" \
     --aux_api_base_url "YOUR_AUX_API_BASE_URL" \
@@ -156,7 +160,9 @@ python scripts/run_web_thinker_report.py \
 - `--single_question`: The question you want to ask when running in single question mode.
 - `--concurrent_limit`: Maximum number of concurrent requests.
 - `--max_search_limit`: Maximum number of search queries per reasoning session.
-- `--bing_subscription_key`: Your Bing Search API subscription key.
+- `--search_engine`: Search engine to use (bing or serper). Default: bing.
+- `--serper_api_key`: Your Google Serper API key (not required when using Bing).
+- `--bing_subscription_key`: Your Bing Search API subscription key (not required when using Serper).
 - `--api_base_url`: Base URL for the main model API.
 - `--model_name`: Name of the main model to use.
 - `--aux_api_base_url`: Base URL for the auxiliary model API.
