@@ -665,8 +665,131 @@ async def extract_pdf_text_async(url: str, session: aiohttp.ClientSession) -> st
     except Exception as e:
         return f"Error: {str(e)}"
 
+def google_serper_search(query: str, api_key: str, timeout: int = 20):
+    """
+    Perform a search using the Google Serper API.
 
+    Args:
+        query (str): Search query.
+        api_key (str): API key for Google Serper API.
+        timeout (int or float or tuple): Request timeout in seconds.
 
+    Returns:
+        dict: JSON response of the search results. Returns empty dict if request fails.
+    """
+    url = "https://google.serper.dev/search"
+    payload = json.dumps({"q": query})
+    headers = {
+        'X-API-KEY': api_key,
+        'Content-Type': 'application/json'
+    }
+    
+    max_retries = 3
+    retry_count = 0
+
+    while retry_count < max_retries:
+        try:
+            response = requests.post(url, headers=headers, data=payload, timeout=timeout)
+            response.raise_for_status()  # Raise exception if the request failed
+            search_results = response.json()
+            return search_results
+        except Timeout:
+            retry_count += 1
+            if retry_count == max_retries:
+                print(f"Google Serper API request timed out ({timeout} seconds) for query: {query} after {max_retries} retries")
+                return {}
+            print(f"Google Serper API Timeout occurred, retrying ({retry_count}/{max_retries})...")
+        except requests.exceptions.RequestException as e:
+            retry_count += 1
+            if retry_count == max_retries:
+                print(f"Google Serper API Request Error occurred: {e} after {max_retries} retries")
+                return {}
+            print(f"Google Serper API Request Error occurred, retrying ({retry_count}/{max_retries})...")
+        time.sleep(1)  # Wait 1 second between retries
+    
+    return {}
+
+def extract_relevant_info_serper(search_results):
+    """
+    Extract relevant information from Google Serper search results.
+
+    Args:
+        search_results (dict): JSON response from the Google Serper API.
+
+    Returns:
+        list: A list of dictionaries containing the extracted information.
+    """
+    useful_info = []
+    if 'organic' in search_results:
+        for i, result in enumerate(search_results['organic']):
+            # Try to extract domain for site_name, or leave empty
+            site_name = ''
+            try:
+                site_name = urlparse(result.get('link', '')).netloc
+            except Exception:
+                pass
+
+            info = {
+                'id': i + 1,
+                'title': result.get('title', ''),
+                'url': result.get('link', ''),
+                'site_name': site_name, # Serper doesn't directly provide siteName, try to parse from URL
+                'date': result.get('date', ''), # Serper might not always provide date
+                'snippet': result.get('snippet', ''),
+                'context': ''  # Reserved field
+            }
+            useful_info.append(info)
+    return useful_info
+
+async def google_serper_search_async(query: str, api_key: str, timeout: int = 20):
+    """
+    Perform an asynchronous search using the Google Serper API.
+
+    Args:
+        query (str): Search query.
+        api_key (str): API key for Google Serper API.
+        timeout (int): Request timeout in seconds for each attempt.
+
+    Returns:
+        dict: JSON response of the search results. Returns empty dict if all retries fail.
+    """
+    url = "https://google.serper.dev/search"
+    payload = json.dumps({"q": query})
+    headers_serper = {  # Use a different name to avoid conflict with global headers
+        'X-API-KEY': api_key,
+        'Content-Type': 'application/json'
+    }
+    
+    max_retries = 5  # Consistent with bing_web_search_async
+    retry_count = 0
+    
+    # Create a timeout object for aiohttp
+    client_timeout = aiohttp.ClientTimeout(total=timeout)
+
+    async with aiohttp.ClientSession() as session:
+        while retry_count < max_retries:
+            try:
+                async with session.post(url, headers=headers_serper, data=payload, timeout=client_timeout) as response:
+                    response.raise_for_status()  # Raise AIOHTTPError for bad status (4xx or 5xx)
+                    search_results = await response.json()
+                    return search_results
+            except asyncio.TimeoutError:
+                retry_count += 1
+                if retry_count == max_retries:
+                    print(f"Google Serper API request timed out ({timeout} seconds) for query: {query} after {max_retries} retries")
+                    return {}
+                print(f"Google Serper API Timeout occurred, retrying ({retry_count}/{max_retries})...")
+            except aiohttp.ClientError as e: # Covers ConnectionError, ClientResponseError, etc.
+                retry_count += 1
+                if retry_count == max_retries:
+                    print(f"Google Serper API Request Error occurred: {e} after {max_retries} retries")
+                    return {}
+                print(f"Google Serper API Request Error occurred ({e}), retrying ({retry_count}/{max_retries})...")
+            
+            if retry_count < max_retries:
+                await asyncio.sleep(1)  # Wait 1 second between retries (non-blocking)
+    
+    return {}
 
 # ------------------------------------------------------------
 
@@ -674,24 +797,47 @@ if __name__ == "__main__":
     # Example usage
     # Define the query to search
     query = "Structure of dimethyl fumarate"
+
+    # --- CHOOSE SEARCH TYPE ---
+    # search_type = "bing"
+    search_type = "serper"  # or "bing"
+
+    search_results = {}
+    extracted_info = []
+
+    if search_type == "bing":
+        # Set your API key for Bing Web Search API
+        BING_SUBSCRIPTION_KEY = "YOUR_BING_SUBSCRIPTION_KEY"
+        bing_endpoint = "https://api.bing.microsoft.com/v7.0/search"
+        
+        # Perform the search
+        print("Performing Bing Web Search...")
+        search_results = bing_web_search(query, BING_SUBSCRIPTION_KEY, bing_endpoint)
+        
+        print("Extracting relevant information from Bing search results...")
+        extracted_info = extract_relevant_info(search_results)
+
+    elif search_type == "serper":
+        # Set your API key for Google Serper API
+        SERPER_API_KEY = "YOUR_GOOGLE_SEARCH_API_KEY"
+
+        print("Performing Google Serper Search...")
+        search_results = google_serper_search(query, SERPER_API_KEY)
+
+        print("Extracting relevant information from Google Serper search results...")
+        extracted_info = extract_relevant_info_serper(search_results)
+        print(extracted_info)
+    else:
+        print(f"Unknown search_type: {search_type}. Please choose 'bing' or 'serper'.")
+        exit()
     
-    # Subscription key and endpoint for Bing Search API
-    BING_SUBSCRIPTION_KEY = "YOUR_BING_SUBSCRIPTION_KEY"
-    if not BING_SUBSCRIPTION_KEY:
-        raise ValueError("Please set the BING_SEARCH_V7_SUBSCRIPTION_KEY environment variable.")
-    
-    bing_endpoint = "https://api.bing.microsoft.com/v7.0/search"
-    
-    # Perform the search
-    print("Performing Bing Web Search...")
-    search_results = bing_web_search(query, BING_SUBSCRIPTION_KEY, bing_endpoint)
-    
-    print("Extracting relevant information from search results...")
-    extracted_info = extract_relevant_info(search_results)
+    if not extracted_info:
+        print("No search results to process.")
+        exit()
 
     print("Fetching and extracting context for each snippet...")
     for info in tqdm(extracted_info, desc="Processing Snippets"):
-        full_text = extract_text_from_url(info['url'], use_jina=True)  # Get full webpage text
+        full_text = extract_text_from_url(info['url'], use_jina=False)  # Get full webpage text
         if full_text and not full_text.startswith("Error"):
             success, context = extract_snippet_with_context(full_text, info['snippet'])
             if success:
@@ -701,6 +847,6 @@ if __name__ == "__main__":
         else:
             info['context'] = f"Failed to fetch full text: {full_text}"
 
-    # print("Your Search Query:", query)
-    # print("Final extracted information with context:")
-    # print(json.dumps(extracted_info, indent=2, ensure_ascii=False))
+    print("Your Search Query:", query)
+    print("Final extracted information with context:")
+    print(json.dumps(extracted_info, indent=2, ensure_ascii=False))

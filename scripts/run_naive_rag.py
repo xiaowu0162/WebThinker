@@ -15,9 +15,10 @@ from search.bing_search import (
     extract_relevant_info,
     fetch_page_content,
     extract_snippet_with_context,
+    google_serper_search,
+    extract_relevant_info_serper,
 )
 from evaluate.evaluate import run_evaluation, extract_answer_fn
-from vllm import LLM, SamplingParams
 from openai import AsyncOpenAI
 
 import re
@@ -52,8 +53,10 @@ def parse_args():
     parser.add_argument('--top_k_sampling', type=int, default=20, help="Top-k sampling parameter.")
     parser.add_argument('--repetition_penalty', type=float, default=None, help="Repetition penalty. If not set, defaults based on the model.")
     parser.add_argument('--max_tokens', type=int, default=32768, help="Maximum number of tokens to generate. If not set, defaults based on the model and dataset.")
-    parser.add_argument('--bing_subscription_key', type=str, required=True, help="Bing Search API subscription key.")
+    parser.add_argument('--bing_subscription_key', type=str, default=None, help="Bing Search API subscription key.")
     parser.add_argument('--bing_endpoint', type=str, default="https://api.bing.microsoft.com/v7.0/search", help="Bing Search API endpoint.")
+    parser.add_argument('--serper_api_key', type=str, default=None, help="Google Serper API key.")
+    parser.add_argument('--search_engine', type=str, default="bing", choices=["bing", "serper"], help="Search engine to use (bing or serper). Default: bing")
     parser.add_argument('--concurrent_limit', type=int, default=50, help="Maximum number of concurrent API calls")
     parser.add_argument('--seed', type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument('--eval', action='store_true', help="Whether to run evaluation")
@@ -88,7 +91,7 @@ async def generate_response(
                 print(f"Failed after {retry_limit} attempts: {e}")
                 return ""
             if "maximum context length" in str(e):
-                max_tokens = max_tokens - 1000 * (attempt + 1)
+                max_tokens = max_tokens // 2
                 continue
             await asyncio.sleep(1 * (attempt + 1))
     return ""
@@ -142,6 +145,17 @@ async def parse_query_plan(response: str) -> List[str]:
 async def main_async():
     args = parse_args()
     
+    # Validate API keys based on selected search engine
+    if args.search_engine == "bing" and not args.bing_subscription_key:
+        print("Error: Bing search engine is selected, but --bing_subscription_key is not provided.")
+        return
+    elif args.search_engine == "serper" and not args.serper_api_key:
+        print("Error: Serper search engine is selected, but --serper_api_key is not provided.")
+        return
+    elif args.search_engine not in ["bing", "serper"]: # Should be caught by choices, but good to have
+        print(f"Error: Invalid search engine '{args.search_engine}'. Choose 'bing' or 'serper'.")
+        return
+
     # Set random seed
     if args.seed is None:
         args.seed = int(time.time())
@@ -194,7 +208,7 @@ async def main_async():
     # ---------------------- Caching Mechanism ----------------------
     # Define cache directories and file paths
     cache_dir = './cache'
-    search_cache_path = os.path.join(cache_dir, 'search_cache.json')
+    search_cache_path = os.path.join(cache_dir, f'{args.search_engine}_search_cache.json')
     url_cache_path = os.path.join(cache_dir, 'url_cache.json')
 
     # Ensure cache directory exists
@@ -233,6 +247,10 @@ async def main_async():
             model_short_name = 'dpsk-qwen-7b'
         elif 'qwen-32b' in args.model_name.lower():
             model_short_name = 'dpsk-qwen-32b'
+        elif 'qwen-14b' in args.model_name.lower():
+            model_short_name = 'dpsk-qwen-14b'
+        elif 'llama-70b' in args.model_name.lower():
+            model_short_name = 'dpsk-llama-70b'
     elif 'sky-t1' in args.model_name.lower():
         model_short_name = 'sky-t1'
     else:
@@ -244,7 +262,7 @@ async def main_async():
         method = 'naive_rag'
     
     # Set output directory
-    if model_short_name in ['qwq', 'dpsk-llama-8b', 'dpsk-qwen-1.5b', 'dpsk-qwen-7b', 'dpsk-qwen-32b', 'sky-t1']:
+    if model_short_name in ['qwq', 'dpsk-llama-8b', 'dpsk-qwen-1.5b', 'dpsk-qwen-7b', 'dpsk-qwen-32b', 'sky-t1', 'dpsk-qwen-14b']:
         if args.dataset_name in ['math500', 'gpqa', 'supergpqa', 'aime', 'amc', 'livecode', 'openthoughts']:
             output_dir = f'./outputs/{args.dataset_name}.{model_short_name}.{method}'
         else:
@@ -254,13 +272,14 @@ async def main_async():
     os.makedirs(output_dir, exist_ok=True)
 
     # ---------------------- Search and Document Retrieval ----------------------
-    print("Performing Bing Web Searches for all questions...")
+    print("Performing Web Searches for all questions...")
 
     # Initialize a list to hold relevant information for each question
     all_relevant_info = []
 
-    for item in tqdm(data, desc="Searching"):
+    for item in tqdm(data, desc=f"Searching with {args.search_engine}"):
         question = item['Question']
+        results = {} # Initialize results
         
         if args.apply_query_planning:
             # Generate query plan using aux model
@@ -280,29 +299,47 @@ async def main_async():
                 sub_queries = [question]
             
             # Collect results from all sub-queries
-            all_results = []
+            all_results_data = [] # Renamed to avoid conflict with 'results' variable for single search
             for sub_query in sub_queries:
                 sub_query = str(sub_query)
+                current_search_results = {}
                 if sub_query in search_cache:
-                    results = search_cache[sub_query]
+                    current_search_results = search_cache[sub_query]
                 else:
-                    results = bing_web_search(sub_query[:500], args.bing_subscription_key, args.bing_endpoint, market='en-US', language='en')
-                    search_cache[sub_query] = results
-                relevant_info = extract_relevant_info(results)[:5]  # top-5 for each sub-query
-                all_results.extend(relevant_info)
+                    if args.search_engine == "bing":
+                        current_search_results = bing_web_search(sub_query[:500], args.bing_subscription_key, args.bing_endpoint, market='en-US', language='en')
+                    elif args.search_engine == "serper":
+                        current_search_results = google_serper_search(sub_query[:500], args.serper_api_key)
+                    search_cache[sub_query] = current_search_results
+                
+                if args.search_engine == "bing":
+                    relevant_sub_info = extract_relevant_info(current_search_results)[:5]  # top-5 for each sub-query
+                elif args.search_engine == "serper":
+                    relevant_sub_info = extract_relevant_info_serper(current_search_results)[:5]
+                else: # Should not happen
+                    relevant_sub_info = []
+                all_results_data.extend(relevant_sub_info)
             
-            all_relevant_info.append(all_results)
+            all_relevant_info.append(all_results_data)
         else:
             # Original search logic
             if question in search_cache:
                 results = search_cache[question]
             else:
                 search_question = question[:500] if args.dataset_name == 'livecode' else question
-                results = bing_web_search(search_question, args.bing_subscription_key, args.bing_endpoint, market='en-US', language='en')
+                if args.search_engine == "bing":
+                    results = bing_web_search(search_question, args.bing_subscription_key, args.bing_endpoint, market='en-US', language='en')
+                elif args.search_engine == "serper":
+                    results = google_serper_search(search_question, args.serper_api_key)
                 search_cache[question] = results
 
-            relevant_info = extract_relevant_info(results)[:args.top_k]
-            all_relevant_info.append(relevant_info)
+            if args.search_engine == "bing":
+                relevant_info_for_item = extract_relevant_info(results)[:args.top_k]
+            elif args.search_engine == "serper":
+                relevant_info_for_item = extract_relevant_info_serper(results)[:args.top_k]
+            else: # Should not happen
+                relevant_info_for_item = []
+            all_relevant_info.append(relevant_info_for_item)
 
     # Save search cache after retrieval
     save_caches()

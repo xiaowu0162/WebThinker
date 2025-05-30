@@ -21,7 +21,9 @@ from search.bing_search import (
     fetch_page_content, 
     fetch_page_content_async,
     extract_snippet_with_context,
-    bing_web_search_async
+    bing_web_search_async,
+    google_serper_search_async,
+    extract_relevant_info_serper
 )
 from prompts.prompts_report import (
     get_standard_rag_report_instruction,
@@ -63,11 +65,15 @@ def parse_args():
     parser.add_argument('--keep_links', action='store_true', default=False, help="Whether to keep links in fetched web content")
     parser.add_argument('--use_jina', action='store_true', help="Whether to use Jina API for document fetching.")
     parser.add_argument('--jina_api_key', type=str, default='None', help="Your Jina API Key to Fetch URL Content.")
-    parser.add_argument('--bing_subscription_key', type=str, required=True, help="Bing Search API subscription key.")
+    parser.add_argument('--bing_subscription_key', type=str, default=None, help="Bing Search API subscription key.")
     parser.add_argument('--bing_endpoint', type=str, default="https://api.bing.microsoft.com/v7.0/search", help="Bing Search API endpoint.")
+    parser.add_argument('--serper_api_key', type=str, default=None, help="Google Serper API key.")
+    parser.add_argument('--search_engine', type=str, default="bing", choices=["bing", "serper"], help="Search engine to use (bing or serper).")
     parser.add_argument('--seed', type=int, default=None, help="Random seed for generation.")
     parser.add_argument('--api_base_url', type=str, required=True, help="Base URL for the API endpoint")
+    parser.add_argument('--api_key', type=str, default="empty", help="API key for the model service")
     parser.add_argument('--model_name', type=str, default="QwQ-32B", help="Name of the model to use")
+    parser.add_argument('--max_tokens', type=int, default=None, help="Maximum number of tokens to generate")
     parser.add_argument('--concurrent_limit', type=int, default=32, help="Maximum number of concurrent API calls")
     return parser.parse_args()
 
@@ -129,7 +135,8 @@ async def generate_response(
     temperature: float = 0.7,
     top_p: float = 0.8,
     retry_limit: int = 3,
-    model_name: str = "gpt-3.5-turbo"
+    model_name: str = "gpt-3.5-turbo",
+    max_tokens: Optional[int] = None,
 ) -> str:
     """Generate a response using the chat API"""
     for attempt in range(retry_limit):
@@ -140,6 +147,7 @@ async def generate_response(
                     messages=[{"role": "user", "content": prompt}],
                     temperature=temperature,
                     top_p=top_p,
+                    max_tokens=max_tokens,
                     timeout=600,
                 )
                 return response.choices[0].message.content
@@ -162,23 +170,46 @@ async def process_single_sequence(
 ) -> Dict:
     """Process a single question through RAG pipeline"""
     
+    results = {}
     # Search for relevant documents
     try:
         if question in search_cache:
             results = search_cache[question]
         else:
-            results = await bing_web_search_async(question, args.bing_subscription_key, args.bing_endpoint)
-            search_cache[question] = results
+            if args.search_engine == "bing":
+                if not args.bing_subscription_key:
+                    print(f"Error: Bing search engine is selected, but BING_SUBSCRIPTION_KEY is not provided for question: {question}")
+                    results = {}
+                else:
+                    results = await bing_web_search_async(question, args.bing_subscription_key, args.bing_endpoint)
+            elif args.search_engine == "serper":
+                if not args.serper_api_key:
+                    print(f"Error: Serper search engine is selected, but SERPER_API_KEY is not provided for question: {question}")
+                    results = {}
+                else:
+                    results = await google_serper_search_async(question, args.serper_api_key)
+            else:
+                print(f"Error: Unknown search engine: {args.search_engine}")
+                results = {}
+            
+            if results: # Only cache if results are not empty (i.e., search was successful)
+                search_cache[question] = results
+
     except Exception as e:
-        print(f"Error during search: {e}")
+        print(f"Error during search for '{question}' using {args.search_engine}: {e}")
         results = {}
 
     # Extract and process relevant documents
-    relevant_info = extract_relevant_info(results)[:args.top_k]
+    relevant_info = []
+    if results:
+        if args.search_engine == "bing":
+            relevant_info = extract_relevant_info(results)[:args.top_k]
+        elif args.search_engine == "serper":
+            relevant_info = extract_relevant_info_serper(results)[:args.top_k]
     
     # Fetch page content for each result
     documents = []
-    for doc_info in relevant_info:
+    for idx, doc_info in enumerate(relevant_info):
         url = doc_info['url']
         if url not in url_cache:
             try:
@@ -188,9 +219,13 @@ async def process_single_sequence(
                     jina_api_key=args.jina_api_key, 
                     keep_links=args.keep_links
                 )
-                content = contents[url]
-                if not any(indicator.lower() in content.lower() for indicator in error_indicators):
-                    url_cache[url] = content
+                raw_content = contents[url]
+                if not any(indicator.lower() in raw_content.lower() for indicator in error_indicators):
+                    url_cache[url] = raw_content
+                    # Set context size based on document index
+                    context_chars = 8000 if idx < 5 else 4000
+                    # Extract snippet with context
+                    is_success, content = extract_snippet_with_context(raw_content, doc_info['snippet'], context_chars=context_chars)
                     documents.append({
                         'title': doc_info['title'],
                         'url': url,
@@ -199,7 +234,11 @@ async def process_single_sequence(
             except Exception as e:
                 print(f"Error fetching URL {url}: {e}")
         else:
-            content = url_cache[url]
+            raw_content = url_cache[url]
+            # Set context size based on document index
+            context_chars = 8000 if idx < 5 else 4000
+            # Extract snippet with context
+            is_success, content = extract_snippet_with_context(raw_content, doc_info['snippet'], context_chars=context_chars)
             documents.append({
                 'title': doc_info['title'],
                 'url': url,
@@ -215,6 +254,7 @@ async def process_single_sequence(
         temperature=args.temperature,
         top_p=args.top_p,
         model_name=args.model_name,
+        max_tokens=args.max_tokens,
     )
 
     article = extract_markdown_content(response)
@@ -230,6 +270,17 @@ async def process_single_sequence(
 
 async def main_async():
     args = parse_args()
+
+    # Validate API keys based on selected search engine
+    if args.search_engine == "bing" and not args.bing_subscription_key:
+        print("Error: Bing search engine is selected, but --bing_subscription_key is not provided.")
+        return
+    elif args.search_engine == "serper" and not args.serper_api_key:
+        print("Error: Serper search engine is selected, but --serper_api_key is not provided.")
+        return
+    elif args.search_engine not in ["bing", "serper"]:
+        print(f"Error: Invalid search engine '{args.search_engine}'. Choose 'bing' or 'serper'.")
+        return
 
     # Set random seed
     if args.seed is None:
@@ -250,7 +301,7 @@ async def main_async():
 
     # Setup caching
     os.makedirs('./cache', exist_ok=True)
-    search_cache_path = './cache/search_cache.json'
+    search_cache_path = f'./cache/{args.search_engine}_search_cache.json'
     url_cache_path = './cache/url_cache.json'
     
     search_cache = json.load(open(search_cache_path)) if os.path.exists(search_cache_path) else {}
@@ -262,7 +313,7 @@ async def main_async():
 
     # Initialize API client
     client = AsyncOpenAI(
-        api_key="empty",
+        api_key=args.api_key,
         base_url=args.api_base_url,
     )
 
