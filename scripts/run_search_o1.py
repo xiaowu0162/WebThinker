@@ -18,7 +18,9 @@ from search.bing_search import (
     bing_web_search, 
     extract_relevant_info, 
     fetch_page_content, 
-    extract_snippet_with_context
+    extract_snippet_with_context,
+    google_serper_search,
+    extract_relevant_info_serper
 )
 from evaluate.evaluate import (
     run_evaluation, 
@@ -158,7 +160,7 @@ def parse_args():
     parser.add_argument(
         '--bing_subscription_key',
         type=str,
-        required=True,
+        default=None,
         help="Bing Search API subscription key."
     )
 
@@ -167,6 +169,23 @@ def parse_args():
         type=str,
         default="https://api.bing.microsoft.com/v7.0/search",
         help="Bing Search API endpoint."
+    )
+
+    # Serper API Configuration (New)
+    parser.add_argument(
+        '--serper_api_key',
+        type=str,
+        default=None,
+        help="Google Serper API key."
+    )
+
+    # Search Engine Choice (New)
+    parser.add_argument(
+        '--search_engine',
+        type=str,
+        default="bing",
+        choices=["bing", "serper"],
+        help="Search engine to use (bing or serper). Default: bing"
     )
 
     # Add new eval and seed arguments
@@ -420,18 +439,27 @@ async def process_single_sequence(
             seq['output'] = seq['output'].replace('</think>\n','')
             if seq['search_count'] < args.max_search_limit and search_query not in seq['executed_search_queries']:
                 # Execute search
+                results = {}
                 if search_query in search_cache:
                     results = search_cache[search_query]
                 else:
                     try:
-                        results = bing_web_search(search_query, args.bing_subscription_key, args.bing_endpoint)
+                        if args.search_engine == "bing":
+                            results = bing_web_search(search_query, args.bing_subscription_key, args.bing_endpoint)
+                        elif args.search_engine == "serper":
+                            results = google_serper_search(search_query, args.serper_api_key)
                         search_cache[search_query] = results
                     except Exception as e:
-                        print(f"Error during search query '{search_query}': {e}")
+                        print(f"Error during search query '{search_query}' using {args.search_engine}: {e}")
                         search_cache[search_query] = {}
                         results = {}
-
-                relevant_info = extract_relevant_info(results)[:args.top_k]
+                
+                if args.search_engine == "bing":
+                    relevant_info = extract_relevant_info(results)[:args.top_k]
+                elif args.search_engine == "serper":
+                    relevant_info = extract_relevant_info_serper(results)[:args.top_k]
+                else: # Should not happen
+                    relevant_info = []
                 seq['relevant_info'] = relevant_info
 
                 # Process documents
@@ -531,6 +559,17 @@ async def process_single_sequence(
 async def main_async():
     args = parse_args()
 
+    # Validate API keys based on selected search engine
+    if args.search_engine == "bing" and not args.bing_subscription_key:
+        print("Error: Bing search engine is selected, but --bing_subscription_key is not provided.")
+        return
+    elif args.search_engine == "serper" and not args.serper_api_key:
+        print("Error: Serper search engine is selected, but --serper_api_key is not provided.")
+        return
+    elif args.search_engine not in ["bing", "serper"]: # Should be caught by choices, but good to have
+        print(f"Error: Invalid search engine '{args.search_engine}'. Choose 'bing' or 'serper'.")
+        return
+
     # Set random seed
     if args.seed is None:
         args.seed = int(time.time())
@@ -556,7 +595,7 @@ async def main_async():
 
     # ---------------------- Caching Mechanism ----------------------
     cache_dir = './cache'
-    search_cache_path = os.path.join(cache_dir, 'search_cache.json')
+    search_cache_path = os.path.join(cache_dir, f'{args.search_engine}_search_cache.json')
     url_cache_path = os.path.join(cache_dir, 'url_cache.json')
 
     os.makedirs(cache_dir, exist_ok=True)

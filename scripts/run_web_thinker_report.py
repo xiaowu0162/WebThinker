@@ -22,7 +22,9 @@ from search.bing_search import (
     fetch_page_content, 
     fetch_page_content_async,
     extract_snippet_with_context,
-    bing_web_search_async
+    bing_web_search_async,
+    google_serper_search_async,
+    extract_relevant_info_serper
 )
 from evaluate.evaluate import (
     run_evaluation, 
@@ -107,8 +109,10 @@ def parse_args():
     parser.add_argument('--keep_links', action='store_true', default=False, help="Whether to keep links in fetched web content")
     parser.add_argument('--use_jina', action='store_true', help="Whether to use Jina API for document fetching.")
     parser.add_argument('--jina_api_key', type=str, default='None', help="Your Jina API Key to Fetch URL Content.")
-    parser.add_argument('--bing_subscription_key', type=str, required=True, help="Bing Search API subscription key.")
+    parser.add_argument('--bing_subscription_key', type=str, default=None, help="Bing Search API subscription key.")
     parser.add_argument('--bing_endpoint', type=str, default="https://api.bing.microsoft.com/v7.0/search", help="Bing Search API endpoint.")
+    parser.add_argument('--serper_api_key', type=str, default=None, help="Google Serper API key.")
+    parser.add_argument('--search_engine', type=str, default="bing", choices=["bing", "serper"], help="Search engine to use (bing or serper). Default: bing")
     parser.add_argument('--eval', action='store_true', help="Whether to run evaluation after generation.")
     parser.add_argument('--seed', type=int, default=None, help="Random seed for generation. If not set, will use current timestamp as seed.")
     parser.add_argument('--api_base_url', type=str, required=True, help="Base URL for the API endpoint")
@@ -311,15 +315,24 @@ async def generate_deep_web_explorer(
                     results = search_cache[new_query]
                 else:
                     try:
-                        # results = bing_web_search(new_query, args.bing_subscription_key, args.bing_endpoint)
-                        results = await bing_web_search_async(new_query, args.bing_subscription_key, args.bing_endpoint)
+                        if args.search_engine == "bing":
+                            results = await bing_web_search_async(new_query, args.bing_subscription_key, args.bing_endpoint)
+                        elif args.search_engine == "serper":
+                            results = await google_serper_search_async(new_query, args.serper_api_key)
+                        else: # Should not happen
+                            results = {}
                         search_cache[new_query] = results
                     except Exception as e:
-                        print(f"Error during search query '{new_query}': {e}")
+                        print(f"Error during search query '{new_query}' using {args.search_engine}: {e}")
                         results = {}
-                print('- Searched for:', new_query)
+                print(f'- Searched for "{new_query}" using {args.search_engine}')
 
-                relevant_info = extract_relevant_info(results)[:args.top_k]
+                if args.search_engine == "bing":
+                    relevant_info = extract_relevant_info(results)[:args.top_k]
+                elif args.search_engine == "serper":
+                    relevant_info = extract_relevant_info_serper(results)[:args.top_k]
+                else: # Should not happen
+                    relevant_info = []
 
                 formatted_documents = format_search_results(relevant_info)
                 
@@ -677,15 +690,24 @@ async def process_single_sequence(
                 results = search_cache[search_query]
             else:
                 try:
-                    # results = bing_web_search(search_query, args.bing_subscription_key, args.bing_endpoint)
-                    results = await bing_web_search_async(search_query, args.bing_subscription_key, args.bing_endpoint)
+                    if args.search_engine == "bing":
+                        results = await bing_web_search_async(search_query, args.bing_subscription_key, args.bing_endpoint)
+                    elif args.search_engine == "serper":
+                        results = await google_serper_search_async(search_query, args.serper_api_key)
+                    else: # Should not happen
+                        results = {}
                     search_cache[search_query] = results
                 except Exception as e:
-                    print(f"Error during search query '{search_query}': {e}")
+                    print(f"Error during search query '{search_query}' using {args.search_engine}: {e}")
                     results = {}
-            print(f'---Searched for:---\n{search_query}\n')
+            print(f'---Searched for:---\n"{search_query}" using {args.search_engine}\n')
 
-            relevant_info = extract_relevant_info(results)[:args.top_k]
+            if args.search_engine == "bing":
+                relevant_info = extract_relevant_info(results)[:args.top_k]
+            elif args.search_engine == "serper":
+                relevant_info = extract_relevant_info_serper(results)[:args.top_k]
+            else: # Should not happen
+                relevant_info = []
 
             # Process documents
             urls_to_fetch = []
@@ -891,6 +913,17 @@ async def main_async():
     random.seed(args.seed)
     np.random.seed(args.seed)
 
+    # Validate API keys based on selected search engine
+    if args.search_engine == "bing" and not args.bing_subscription_key:
+        print("Error: Bing search engine is selected, but --bing_subscription_key is not provided.")
+        return
+    elif args.search_engine == "serper" and not args.serper_api_key:
+        print("Error: Serper search engine is selected, but --serper_api_key is not provided.")
+        return
+    elif args.search_engine not in ["bing", "serper"]: # Should be caught by choices, but good to have
+        print(f"Error: Invalid search engine '{args.search_engine}'. Choose 'bing' or 'serper'.")
+        return
+
     if args.jina_api_key == 'None':
         jina_api_key = None
 
@@ -905,6 +938,8 @@ async def main_async():
         # Original dataset loading logic
         if args.dataset_name == 'glaive':
             data_path = f'./data/Glaive/{args.split}.json'
+        elif args.dataset_name == 'surveyeval':
+            data_path = f'./data/SurveyEval/{args.split}.json'
         else:
             data_path = f'./data/{args.dataset_name}.json'
 
@@ -922,7 +957,7 @@ async def main_async():
 
     # ---------------------- Caching Mechanism ----------------------
     cache_dir = './cache'
-    search_cache_path = os.path.join(cache_dir, 'search_cache.json')
+    search_cache_path = os.path.join(cache_dir, f'{args.search_engine}_search_cache.json')
     if args.keep_links:
         url_cache_path = os.path.join(cache_dir, 'url_cache_with_links.json')
     else:
