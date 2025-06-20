@@ -809,10 +809,17 @@ async def process_single_sequence(
             seq['executed_search_queries'].add(search_query)
             total_tokens += len(append_text.split())
 
-            # Add retrieved content to document memory
+            # Add retrieved content to document memory and rebuild BM25 index if needed
+            document_memory_updated = False
             for doc_info in relevant_info:
                 if 'page_info' in doc_info and doc_info['page_info'] != "Can not fetch the page content.":
                     document_memory.append(doc_info['page_info'])
+                    document_memory_updated = True
+            
+            # Rebuild BM25 index if document memory was updated
+            if document_memory_updated:
+                tokenized_docs = [word_tokenize(doc.lower()) for doc in document_memory]
+                bm25 = BM25Okapi(tokenized_docs)
             
             print(f"---Returned search results:---\n{extracted_info}\n")
 
