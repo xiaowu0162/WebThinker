@@ -262,10 +262,20 @@ async def generate_response(
                 # print('---\n', response.choices[0].message.content)
                 return response.choices[0].message.content
         except Exception as e:
+            # print(f"Generate Response Error occurred: {e}, Starting retry attempt {attempt + 1}")
+            # if attempt == retry_limit - 1:
+            #     print(f"Failed after {retry_limit} attempts: {e}")
+            #     return ""
+            # await asyncio.sleep(1 * (attempt + 1))
             print(f"Generate Response Error occurred: {e}, Starting retry attempt {attempt + 1}")
+            # print(prompt)
+            if "maximum context length" in str(e).lower():
+                # If length exceeds limit, reduce max_tokens by half
+                max_tokens = max_tokens // 2
+                print(f"Reducing max_tokens to {max_tokens}")
             if attempt == retry_limit - 1:
                 print(f"Failed after {retry_limit} attempts: {e}")
-                return ""
+                return "", ""
             await asyncio.sleep(1 * (attempt + 1))
     return ""
 
@@ -569,6 +579,21 @@ async def main_async():
     elif args.search_engine not in ["bing", "serper"]: # Should be caught by choices, but good to have
         print(f"Error: Invalid search engine '{args.search_engine}'. Choose 'bing' or 'serper'.")
         return
+    
+    # eval task type
+    eval_task_type = None
+    if args.eval:
+        if args.dataset_name in ['gpqa']:
+            eval_task_type = 'choose'
+        elif args.dataset_name in ['aime', 'amc', 'math500']:
+            eval_task_type = 'math'
+        elif args.dataset_name in ['livecode']:
+            eval_task_type = 'code'
+        elif args.dataset_name in ['gaia', 'bamboogle']:
+            eval_task_type = 'qa'
+        else:
+            raise NotImplementedError
+        assert eval_task_type in ['math', 'code', 'choose', 'qa']
 
     # Set random seed
     if args.seed is None:
@@ -587,7 +612,7 @@ async def main_async():
     elif args.dataset_name in ['math500', 'gpqa', 'aime', 'amc', 'gaia', 'hle']:
         data_path = f'./data/{args.dataset_name.upper()}/{args.split}.json'
     else:
-        data_path = f'./data/QA_Datasets/{args.dataset_name}.json'
+        data_path = f'./data/QA_Datasets/{args.dataset_name}_{args.split}json'
 
     print('-----------------------')
     print(f'Using {args.dataset_name} {args.split} set.')
@@ -651,9 +676,10 @@ async def main_async():
         filtered_data = json.load(json_file)
 
     if args.subset_num != -1:
-        indices = list(range(len(filtered_data)))
-        selected_indices = random.sample(indices, min(args.subset_num, len(indices)))
-        filtered_data = [filtered_data[i] for i in selected_indices]
+        # indices = list(range(len(filtered_data)))
+        # selected_indices = random.sample(indices, min(args.subset_num, len(indices)))
+        # filtered_data = [filtered_data[i] for i in selected_indices]
+        filtered_data = filtered_data[:args.subset_num]
 
     # Prepare sequences
     active_sequences = []
@@ -757,19 +783,24 @@ async def main_async():
         json.dump(batch_output_records, f, ensure_ascii=False, indent=2)
 
     # Prepare output list and save results
-    output_list = [seq['output'] for seq in completed_sequences]
+    t = time.localtime()
+    result_json_name = f'{args.split}.{t.tm_mon}.{t.tm_mday},{t.tm_hour}:{t.tm_min}.json'
     
-    if args.eval:
-        run_evaluation(filtered_data, [seq['prompt'] for seq in completed_sequences], output_list, args.dataset_name, output_dir, total_time, args.split)
-    else:
-        t = time.localtime()
-        result_json_name = f'{args.split}.{t.tm_mon}.{t.tm_mday},{t.tm_hour}:{t.tm_min}.json'
+    # for item, seq in zip(filtered_data, completed_sequences):
+    #     item['Output'] = seq['output']
         
-        for item, seq in zip(filtered_data, completed_sequences):
-            item['Output'] = seq['output']
-            
-        with open(os.path.join(output_dir, result_json_name), mode='w', encoding='utf-8') as json_file:
-            json.dump(filtered_data, json_file, indent=4, ensure_ascii=False)
+    # with open(os.path.join(output_dir, result_json_name), mode='w', encoding='utf-8') as json_file:
+    #     json.dump(filtered_data, json_file, indent=4, ensure_ascii=False)
+
+    if args.eval:
+        filtered_data = [seq['item'] for seq in completed_sequences]
+        output_list = [seq['output'] for seq in completed_sequences]
+        run_evaluation(filtered_data, [seq['prompt'] for seq in completed_sequences], output_list, eval_task_type, 
+                       output_dir,
+                       result_json_name.replace('.json', '.filtered.json'), 
+                       result_json_name.replace('.json', '.metrics.json'),
+                       extract_answer=True)
+    
 
     # Save caches
     save_caches()

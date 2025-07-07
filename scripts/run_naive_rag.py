@@ -45,7 +45,7 @@ def parse_args():
     parser.add_argument('--model_name', type=str, default="QwQ-32B", help="Name of the model to use")
     parser.add_argument('--api_base_url', type=str, required=True, help="Base URL for the API endpoint")
     parser.add_argument('--aux_model_name', type=str, default="Qwen2.5-72B-Instruct", help="Name of the model to use")
-    parser.add_argument('--aux_api_base_url', type=str, required=True, help="Base URL for the API endpoint")
+    parser.add_argument('--aux_api_base_url', type=str, default=None, help="Base URL for the API endpoint")
     parser.add_argument('--use_jina', action='store_true', help="Whether to use Jina API for document fetching.")
     parser.add_argument('--jina_api_key', type=str, default='None', help="Your Jina API Key to Fetch URL Content.")
     parser.add_argument('--temperature', type=float, default=0.7, help="Sampling temperature.")
@@ -156,6 +156,21 @@ async def main_async():
         print(f"Error: Invalid search engine '{args.search_engine}'. Choose 'bing' or 'serper'.")
         return
 
+    # eval task type
+    eval_task_type = None
+    if args.eval:
+        if args.dataset_name in ['gpqa']:
+            eval_task_type = 'choose'
+        elif args.dataset_name in ['aime', 'amc', 'math500']:
+            eval_task_type = 'math'
+        elif args.dataset_name in ['livecode']:
+            eval_task_type = 'code'
+        elif args.dataset_name in ['gaia', 'bamboogle']:
+            eval_task_type = 'qa'
+        else:
+            raise NotImplementedError
+        assert eval_task_type in ['math', 'code', 'choose', 'qa']
+
     # Set random seed
     if args.seed is None:
         args.seed = int(time.time())
@@ -168,10 +183,13 @@ async def main_async():
     )
     
     # Add aux_client initialization
-    aux_client = AsyncOpenAI(
-        api_key="empty",
-        base_url=args.aux_api_base_url,
-    )
+    if args.apply_query_planning:
+        aux_client = AsyncOpenAI(
+            api_key="empty",
+            base_url=args.aux_api_base_url,
+        )
+    else:
+        aux_client = None
     
     # Paths to datasets
     if args.dataset_name == 'math500':
@@ -501,32 +519,37 @@ async def main_async():
     total_time = time.time() - start_time
 
     # ---------------------- Evaluation ----------------------
-    if args.eval:
-        print("Evaluating generated answers...")
-        run_evaluation(
-            filtered_data=data,
-            input_list=input_prompts,
-            output_list=output_list,
-            dataset_name=args.dataset_name,
-            output_dir=output_dir,
-            total_time=total_time,
-            split=args.split,
-        )
-    else:
-        # Save raw outputs and prompts without evaluation
-        for item, prompt, result in zip(data, input_prompts, output_list):
-            item['prompt'] = prompt
-            if isinstance(result, str):
-                item['Output'] = result
-            else:
-                item['Output'] = result.outputs[0].text
+    # TODO: need to fix the arguments to run_evaluation
+    # TODO: there may be misalignment issues if the async?
+    # if args.eval:
         
-        t = time.localtime()
-        result_json_name = f'{args.split}.{t.tm_mon}.{t.tm_mday},{t.tm_hour}:{t.tm_min}.json'
-        # Save prediction results
-        with open(os.path.join(output_dir, result_json_name), mode='w', encoding='utf-8') as json_file:
-            json.dump(data, json_file, indent=4, ensure_ascii=False)
+    # else:
+    # Save raw outputs and prompts without evaluation
+    for item, prompt, result in zip(data, input_prompts, output_list):
+        item['prompt'] = prompt
+        if isinstance(result, str):
+            item['Output'] = result
+        else:
+            item['Output'] = result.outputs[0].text
+    
+    t = time.localtime()
+    result_json_name = f'{args.split}.{t.tm_mon}.{t.tm_mday},{t.tm_hour}:{t.tm_min}.json'
+    # # Save prediction results
+    # with open(os.path.join(output_dir, result_json_name), mode='w', encoding='utf-8') as json_file:
+    #     json.dump(data, json_file, indent=4, ensure_ascii=False)
 
+    print("Evaluating generated answers...")
+    run_evaluation(
+        filtered_data=data,
+        input_list=input_prompts,
+        output_list=output_list,
+        task_type=eval_task_type,
+        output_dir=output_dir,
+        output_metrics_path=result_json_name.replace('.json', '.filtered.json'), 
+        output_metrics_overall_path=result_json_name.replace('.json', '.metrics.json'),
+        extract_answer=True
+    )
+    
     # ---------------------- Update Search and URL Cache ----------------------
     print('Updating Search and URL Cache...')
     # Load existing caches or initialize empty dictionaries

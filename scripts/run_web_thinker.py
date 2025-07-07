@@ -30,21 +30,21 @@ from evaluate.evaluate import (
     extract_answer_fn
 )
 from prompts.prompts import (
-    get_gpqa_search_o1_instruction, 
-    get_gpqa_web_thinker_instruction, 
+    # get_gpqa_search_o1_instruction, 
+    # get_gpqa_web_thinker_instruction, 
     get_deep_web_explorer_instruction, 
     get_web_page_reader_instruction,
     get_search_intent_instruction,
     get_click_intent_instruction,
-    get_math_search_o1_instruction, 
-    get_code_search_o1_instruction, 
-    get_singleqa_search_o1_instruction, 
+    # get_math_search_o1_instruction, 
+    # get_code_search_o1_instruction, 
+    # get_singleqa_search_o1_instruction, 
     get_multiqa_search_o1_instruction, 
-    get_deepseek_multiqa_search_o1_instruction,
+    # get_deepseek_multiqa_search_o1_instruction,
     get_task_instruction_openqa, 
-    get_task_instruction_math, 
-    get_task_instruction_multi_choice, 
-    get_task_instruction_code, 
+    # get_task_instruction_math, 
+    # get_task_instruction_multi_choice, 
+    # get_task_instruction_code, 
 )
 from transformers import AutoTokenizer
 
@@ -133,6 +133,19 @@ args = parse_args()
 tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path)
 aux_tokenizer = AutoTokenizer.from_pretrained(args.aux_tokenizer_path)
 
+eval_task_type = None
+if args.eval:
+    if args.dataset_name in ['gpqa']:
+        eval_task_type = 'choose'
+    elif args.dataset_name in ['aime', 'amc', 'math500']:
+        eval_task_type = 'math'
+    elif args.dataset_name in ['livecode']:
+        eval_task_type = 'code'
+    elif args.dataset_name in ['gaia', 'bamboogle']:
+        eval_task_type = 'qa'
+    else:
+        raise NotImplementedError
+    assert eval_task_type in ['math', 'code', 'choose', 'qa']
 
 def extract_between(text, start_marker, end_marker):
     """Extracts text between two markers in a string."""
@@ -720,7 +733,9 @@ async def main_async():
         args.dataset_name = 'custom'  # Set dataset name to custom for single questions
     else:
         # Original dataset loading logic
-        if args.dataset_name == 'supergpqa':
+        if args.dataset_name == 'livecode':
+            data_path = f'./data/LiveCodeBench/{args.split}.json'
+        elif args.dataset_name == 'supergpqa':
             data_path = f'./data/SuperGPQA/{args.split}.json'
         elif args.dataset_name == 'webwalker':
             data_path = f'./data/WebWalkerQA/{args.split}.json'
@@ -805,9 +820,10 @@ async def main_async():
             filtered_data = json.load(json_file)
 
         if args.subset_num != -1:
-            indices = list(range(len(filtered_data)))
-            selected_indices = random.sample(indices, min(args.subset_num, len(indices)))
-            filtered_data = [filtered_data[i] for i in selected_indices]
+            # indices = list(range(len(filtered_data)))
+            # selected_indices = random.sample(indices, min(args.subset_num, len(indices)))
+            # filtered_data = [filtered_data[i] for i in selected_indices]
+            filtered_data = filtered_data[:args.subset_num]
 
     # Prepare sequences
     active_sequences = []
@@ -879,22 +895,27 @@ async def main_async():
 
     total_time = time.time() - start_time
 
-    if args.eval:
-        # Prepare output list and save results
-        output_list = [seq['output'] for seq in completed_sequences]
-        run_evaluation(filtered_data, [seq['original_prompt'] for seq in completed_sequences], output_list, args.dataset_name, output_dir, total_time, args.split)
-    else:
-        t = time.localtime()
-        random_num = str(random.randint(0, 99)).zfill(2)
-        result_json_name = f'{args.split}.{t.tm_mon}.{t.tm_mday},{t.tm_hour}:{t.tm_min}.{random_num}.json'
+    t = time.localtime()
+    random_num = str(random.randint(0, 99)).zfill(2)
+    result_json_name = f'{args.split}.{t.tm_mon}.{t.tm_mday},{t.tm_hour}:{t.tm_min}.{random_num}.json'
 
-        for item, seq in zip(filtered_data, completed_sequences):
-            item['prompt'] = seq['original_prompt']
-            item['Output'] = seq['output']
-            item['WebExplorer'] = seq['web_explorer']  # Updated field name
-            
-        with open(os.path.join(output_dir, result_json_name), mode='w', encoding='utf-8') as json_file:
-            json.dump(filtered_data, json_file, indent=4, ensure_ascii=False)
+    # for item, seq in zip(filtered_data, completed_sequences):
+    #     item['prompt'] = seq['original_prompt']
+    #     item['Output'] = seq['output']
+    #     item['WebExplorer'] = seq['web_explorer']  # Updated field name
+        
+    # with open(os.path.join(output_dir, result_json_name), mode='w', encoding='utf-8') as json_file:
+    #     json.dump(filtered_data, json_file, indent=4, ensure_ascii=False)
+
+
+    if args.eval:
+        filtered_data = [seq['item'] for seq in completed_sequences]
+        output_list = [seq['output'] for seq in completed_sequences]
+        run_evaluation(filtered_data, [seq['original_prompt'] for seq in completed_sequences], output_list, eval_task_type, 
+                       output_dir,
+                       result_json_name.replace('.json', '.filtered.json'), 
+                       result_json_name.replace('.json', '.metrics.json'))
+    
 
     # Save caches
     save_caches()

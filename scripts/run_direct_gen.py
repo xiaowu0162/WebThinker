@@ -225,6 +225,21 @@ async def main_async():
         args.seed = int(time.time())
     random.seed(args.seed)
     np.random.seed(args.seed)
+
+    # eval task type
+    eval_task_type = None
+    if args.eval:
+        if args.dataset_name in ['gpqa']:
+            eval_task_type = 'choose'
+        elif args.dataset_name in ['aime', 'amc', 'math500']:
+            eval_task_type = 'math'
+        elif args.dataset_name in ['livecode']:
+            eval_task_type = 'code'
+        elif args.dataset_name in ['gaia', 'bamboogle']:
+            eval_task_type = 'qa'
+        else:
+            raise NotImplementedError
+        assert eval_task_type in ['math', 'code', 'choose', 'qa']
     
     client = AsyncOpenAI(
         api_key=args.api_key,
@@ -395,25 +410,38 @@ async def main_async():
     total_time = time.time() - t_start
     
     # Run evaluation if --eval flag is set
-    if args.eval:
-        run_evaluation(
-            filtered_data,
-            prompts,
-            output_list,
-            args.dataset_name,
-            output_dir,
-            total_time,
-            args.split,
-        )
-    else:
-        for item, result in zip(filtered_data, output_list):
-            item['Output'] = result
+    # if args.eval:
+    #     run_evaluation(
+    #         filtered_data,
+    #         prompts,
+    #         output_list,
+    #         args.dataset_name,
+    #         output_dir,
+    #         total_time,
+    #         args.split,
+    #     )
+    # else:
+    #     for item, result in zip(filtered_data, output_list):
+    #         item['Output'] = result
         
-        t = time.localtime()
-        result_json_name = f'{args.split}.{t.tm_mon}.{t.tm_mday},{t.tm_hour}:{t.tm_min}.json'
-        # Save prediction results
-        with open(os.path.join(output_dir, result_json_name), mode='w', encoding='utf-8') as json_file:
-            json.dump(filtered_data, json_file, indent=4, ensure_ascii=False)
+    #     t = time.localtime()
+    #     result_json_name = f'{args.split}.{t.tm_mon}.{t.tm_mday},{t.tm_hour}:{t.tm_min}.json'
+    #     # Save prediction results
+    #     with open(os.path.join(output_dir, result_json_name), mode='w', encoding='utf-8') as json_file:
+    #         json.dump(filtered_data, json_file, indent=4, ensure_ascii=False)
+
+    t = time.localtime()
+    result_json_name = f'{args.split}.{t.tm_mon}.{t.tm_mday},{t.tm_hour}:{t.tm_min}.json'
+    run_evaluation(
+        filtered_data=filtered_data,
+        input_list=[x['input'] for x in filtered_data],
+        output_list=output_list,
+        task_type=eval_task_type,
+        output_dir=output_dir,
+        output_metrics_path=result_json_name.replace('.json', '.filtered.json'), 
+        output_metrics_overall_path=result_json_name.replace('.json', '.metrics.json'),
+        extract_answer=True
+    )
 
 def main():
     asyncio.run(main_async())

@@ -6,7 +6,7 @@ from collections import Counter
 import string
 import os, time
 from collections import defaultdict
-# from lcb_runner.evaluation import codegen_metrics
+from lcb_runner.evaluation import codegen_metrics
 import sys
 sys.path.append('./scripts/utils')
 from math_equivalence import is_equiv
@@ -265,9 +265,10 @@ def run_evaluation(filtered_data, input_list, output_list, task_type, output_dir
 
     # Helper function to get domain from item
     def get_domain(item):
-        for field in domain_fields:
-            if field in item and item[field] is not None:
-                return item[field]
+        if domain_fields:
+            for field in domain_fields:
+                if field in item and item[field] is not None:
+                    return item[field]
         return 'Unknown'
 
     if task_type == 'code':
@@ -294,10 +295,24 @@ def run_evaluation(filtered_data, input_list, output_list, task_type, output_dir
             if pred_code != '':
                 num_valid_answer += 1
 
-            public_test_cases = json.loads(item.get("test_cases", "{}"))
+            # public_test_cases = json.loads(item.get("test_cases", "{}"))
+            # public_test_cases += json.loads(item.get("public_test_cases", "{}"))
 
-            inputs = public_test_cases.get("inputs", [])
-            outputs = public_test_cases.get("outputs", [])
+            # inputs = public_test_cases.get("inputs", [])
+            # outputs = public_test_cases.get("outputs", [])
+
+            # sample = {
+            #     "input_output": json.dumps({
+            #         "inputs": inputs,
+            #         "outputs": outputs
+            #     }),
+            # }
+            public_test_cases = json.loads(item.get("public_test_cases", "{}"))
+
+            inputs, outputs = [], []
+            for case in public_test_cases:
+                inputs.append(case["input"])
+                outputs.append(case["output"])
 
             sample = {
                 "input_output": json.dumps({
@@ -308,39 +323,43 @@ def run_evaluation(filtered_data, input_list, output_list, task_type, output_dir
 
             samples_list.append(sample)
             generations_list.append([pred_code])
+
+            # print(json.dumps({'pred': pred_code, 'test_case': sample}, indent=4))
+            # print(json.dumps({'test_case': sample}, indent=4))
             item['Pred_Answer'] = pred_code
             item['Question'] = input_prompt
 
-        # # Call codegen_metrics with pass@1
-        # metrics, results, final_metadata = codegen_metrics(
-        #     samples_list,
-        #     generations_list,
-        #     k_list=[1],  # Evaluate the top 1 generated result
-        #     num_process_evaluate=10,   # Parallel evaluation
-        #     timeout=10,  # Set timeout to 10 seconds
-        #     debug=False,  # Enable debug mode
-        # )
+        # Call codegen_metrics with pass@1
+        metrics, results, final_metadata = codegen_metrics(
+            samples_list,
+            generations_list,
+            k_list=[1],  # Evaluate the top 1 generated result
+            num_process_evaluate=10,   # Parallel evaluation
+            timeout=10,  # Set timeout to 10 seconds
+            debug=False,  # Enable debug mode
+        )
 
-        # # Extract pass@1
-        # pass_at_1 = metrics.get('pass@1', 0.0)
-        # detail_pass_at_1 = metrics['detail']['pass@1']
+        # Extract pass@1
+        pass_at_1 = metrics.get('pass@1', 0.0)
+        detail_pass_at_1 = metrics['detail']['pass@1']
 
-        # for item, pass1, res, meta in zip(filtered_data, detail_pass_at_1.values(), results.values(), final_metadata):
-        #     item['Metrics'] = {'pass@1': pass1}
-        #     item['Results'] = res
-        #     item['Final_metadata'] = meta
+        for item, pass1, res, meta in zip(filtered_data, detail_pass_at_1.values(), results.values(), final_metadata):
+            item['Metrics'] = {'pass@1': pass1}
+            item['Results'] = res
+            item['Final_metadata'] = meta
 
         # Compute overall pass@1
         overall_metrics = {
-            'pass@1': 0.0, # pass_at_1,
+            'pass@1': pass_at_1,
             'num_valid_answer': f'{num_valid_answer} of {len(input_list)}',
         }
 
         # Add domain-specific metrics collection
         for item in filtered_data:
             domain = get_domain(item)
-            domain_metrics[domain]['total'] += 1
-            domain_metrics[domain]['pass@1'].append(0.0)
+            if domain and domain != 'Unknown':
+                domain_metrics[domain]['total'] += 1
+                domain_metrics[domain]['pass@1'].append(0.0)
 
     elif task_type in ['math', 'choose', 'qa']:
         # Evaluation for math/qa tasks
@@ -357,7 +376,10 @@ def run_evaluation(filtered_data, input_list, output_list, task_type, output_dir
             if type(result) == str:
                 item['Output'] = result
             else:
-                item['Output'] = result.outputs[0].text
+                try:
+                    item['Output'] = result.outputs[0].text
+                except:
+                    item['Output'] = result.text
 
             if item['Output'] == '':
                 item['Pred_Answer'] = ''
@@ -446,13 +468,14 @@ def run_evaluation(filtered_data, input_list, output_list, task_type, output_dir
 
         for item, metric in zip(filtered_data, [item['Metrics'] for item in filtered_data]):
             domain = get_domain(item)
-            domain_metrics[domain]['total'] += 1
-            domain_metrics[domain]['em'].append(metric['em'])
-            domain_metrics[domain]['acc'].append(metric['acc'])
-            domain_metrics[domain]['f1'].append(metric['f1'])
-            domain_metrics[domain]['math_equal'].append(metric['math_equal'])
-            if 'llm_equal' in metric:
-                domain_metrics[domain]['llm_equal'].append(metric['llm_equal'])
+            if domain and domain != 'Unknown':
+                domain_metrics[domain]['total'] += 1
+                domain_metrics[domain]['em'].append(metric['em'])
+                domain_metrics[domain]['acc'].append(metric['acc'])
+                domain_metrics[domain]['f1'].append(metric['f1'])
+                domain_metrics[domain]['math_equal'].append(metric['math_equal'])
+                if 'llm_equal' in metric:
+                    domain_metrics[domain]['llm_equal'].append(metric['llm_equal'])
 
     # After the main evaluation loop and before saving metrics, add:
     # Calculate domain-specific metrics
