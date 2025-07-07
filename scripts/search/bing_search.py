@@ -522,10 +522,14 @@ async def extract_text_from_url_async(url: str, session: aiohttp.ClientSession, 
                     text = re.sub(pattern, "", text)
                 text = text.replace('---','-').replace('===','=').replace('   ',' ').replace('   ',' ')
         else:
-            if 'pdf' in url:
+            if '.pdf' in url:
                 # Use async PDF handling
-                text = await extract_pdf_text_async(url, session)
-                return text[:10000]
+                try:
+                    print(f'Debug: processing {url}')
+                    text = await extract_pdf_text_async(url, session)
+                    return text[:10000]
+                except:
+                    return ""
 
             async with session.get(url) as response:
                 # 检测和处理编码

@@ -13,6 +13,7 @@ import random
 import asyncio
 
 from openai import AsyncOpenAI
+from transformers import AutoTokenizer
 
 from search.bing_search import (
     bing_web_search, 
@@ -244,23 +245,44 @@ async def generate_response(
         try:
             async with semaphore:
                 messages = [{"role": "user", "content": prompt}]
-                response = await client.chat.completions.create(
+
+                # original version: chat API (may not automatically append think)
+                # response = await client.chat.completions.create(
+                #     model=model_name,
+                #     messages=messages,
+                #     temperature=temperature,
+                #     top_p=top_p,
+                #     max_tokens=min(max_tokens, 32768),  # Reserve 1000 tokens for prompt
+                #     stop=[END_SEARCH_QUERY],
+                #     extra_body={
+                #         'top_k': top_k,
+                #         'include_stop_str_in_output': True,
+                #         'repetition_penalty': repetition_penalty,
+                #         # 'min_p': min_p
+                #     },
+                #     timeout=1500,
+                # )
+                # # print('---\n', response.choices[0].message.content)
+
+                formatted_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                if ('deepseek' in model_name.lower() or 'r1' in model_name.lower()) and "<think>\n" not in formatted_prompt:
+                    formatted_prompt = formatted_prompt + "<think>\n"
+
+                response = await client.completions.create(
                     model=model_name,
-                    messages=messages,
+                    prompt=formatted_prompt,
                     temperature=temperature,
                     top_p=top_p,
-                    max_tokens=min(max_tokens, 32768),  # Reserve 1000 tokens for prompt
+                    max_tokens=max_tokens,
                     stop=[END_SEARCH_QUERY],
                     extra_body={
                         'top_k': top_k,
                         'include_stop_str_in_output': True,
                         'repetition_penalty': repetition_penalty,
-                        # 'min_p': min_p
                     },
-                    timeout=1500,
+                    timeout=3600,
                 )
-                # print('---\n', response.choices[0].message.content)
-                return response.choices[0].message.content
+                return response.choices[0].text
         except Exception as e:
             # print(f"Generate Response Error occurred: {e}, Starting retry attempt {attempt + 1}")
             # if attempt == retry_limit - 1:
@@ -566,8 +588,19 @@ async def process_single_sequence(
 
     return seq
 
+
+args = parse_args()
+    
+if args.seed is None:
+    args.seed = int(time.time())
+random.seed(args.seed)
+np.random.seed(args.seed)
+
+tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+
+
 async def main_async():
-    args = parse_args()
+    # args = parse_args()
 
     # Validate API keys based on selected search engine
     if args.search_engine == "bing" and not args.bing_subscription_key:
@@ -612,7 +645,7 @@ async def main_async():
     elif args.dataset_name in ['math500', 'gpqa', 'aime', 'amc', 'gaia', 'hle']:
         data_path = f'./data/{args.dataset_name.upper()}/{args.split}.json'
     else:
-        data_path = f'./data/QA_Datasets/{args.dataset_name}_{args.split}json'
+        data_path = f'./data/QA_Datasets/{args.dataset_name}_{args.split}.json'
 
     print('-----------------------')
     print(f'Using {args.dataset_name} {args.split} set.')

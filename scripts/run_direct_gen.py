@@ -152,9 +152,32 @@ async def generate_response(
         try:
             async with semaphore:
                 messages = [{"role": "user", "content": prompt}]
-                response = await client.chat.completions.create(
+
+                # original version: chat API (may not automatically append think)
+                # response = await client.chat.completions.create(
+                #     model=model_name,
+                #     messages=messages,
+                #     temperature=temperature,
+                #     top_p=top_p,
+                #     max_tokens=max_tokens,
+                #     extra_body={
+                #         'top_k': top_k_sampling,
+                #         'include_stop_str_in_output': True,
+                #         'repetition_penalty': repetition_penalty,
+                #         # 'min_p': min_p
+                #     },
+                #     timeout=2500,
+                # )
+                # return response.choices[0].message.content
+
+                # new version: completion API with manually applied chat template + think token
+                messages = [{"role": "user", "content": prompt}]
+                formatted_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                if ('deepseek' in model_name.lower() or 'r1' in model_name.lower()) and "<think>\n" not in formatted_prompt:
+                    formatted_prompt = formatted_prompt + "<think>\n"
+                response = await client.completions.create(
                     model=model_name,
-                    messages=messages,
+                    prompt=formatted_prompt,
                     temperature=temperature,
                     top_p=top_p,
                     max_tokens=max_tokens,
@@ -162,11 +185,12 @@ async def generate_response(
                         'top_k': top_k_sampling,
                         'include_stop_str_in_output': True,
                         'repetition_penalty': repetition_penalty,
+                        # 'bad_words': bad_words,
                         # 'min_p': min_p
                     },
-                    timeout=2500,
+                    timeout=3600,
                 )
-                return response.choices[0].message.content
+                return response.choices[0].text
         except Exception as e:
             if attempt == retry_limit - 1:
                 print(f"Failed after {retry_limit} attempts: {e}")
@@ -217,15 +241,19 @@ async def generate_all_responses(
     
     return responses
 
-async def main_async():
-    args = parse_args()
-    
-    # Set random seed
-    if args.seed is None:
-        args.seed = int(time.time())
-    random.seed(args.seed)
-    np.random.seed(args.seed)
 
+args = parse_args()
+    
+if args.seed is None:
+    args.seed = int(time.time())
+random.seed(args.seed)
+np.random.seed(args.seed)
+
+tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+
+
+async def main_async():
+    
     # eval task type
     eval_task_type = None
     if args.eval:

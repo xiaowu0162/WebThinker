@@ -20,6 +20,7 @@ from search.bing_search import (
 )
 from evaluate.evaluate import run_evaluation, extract_answer_fn
 from openai import AsyncOpenAI
+from transformers import AutoTokenizer
 
 import re
 import string
@@ -77,15 +78,30 @@ async def generate_response(
         try:
             async with semaphore:
                 messages = [{"role": "user", "content": prompt}]
-                response = await client.chat.completions.create(
+
+                # original version: chat API (may not automatically append think)
+                # response = await client.chat.completions.create(
+                #     model=model_name,
+                #     messages=messages,
+                #     temperature=temperature,
+                #     top_p=top_p,
+                #     max_tokens=min(max_tokens, 32768 - 1000),  # Reserve 1000 tokens for prompt
+                #     timeout=600,
+                # )
+                # return response.choices[0].message.content
+
+                formatted_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                if ('deepseek' in model_name.lower() or 'r1' in model_name.lower()) and "<think>\n" not in formatted_prompt:
+                    formatted_prompt = formatted_prompt + "<think>\n"
+                response = await client.completions.create(
                     model=model_name,
-                    messages=messages,
+                    prompt=formatted_prompt,
                     temperature=temperature,
                     top_p=top_p,
                     max_tokens=min(max_tokens, 32768 - 1000),  # Reserve 1000 tokens for prompt
-                    timeout=600,
+                    timeout=3600,
                 )
-                return response.choices[0].message.content
+                return response.choices[0].text
         except Exception as e:
             if attempt == retry_limit - 1:
                 print(f"Failed after {retry_limit} attempts: {e}")
@@ -142,9 +158,18 @@ async def parse_query_plan(response: str) -> List[str]:
     # Fallback: return empty list if parsing fails
     return []
 
-async def main_async():
-    args = parse_args()
+
+args = parse_args()
     
+if args.seed is None:
+    args.seed = int(time.time())
+random.seed(args.seed)
+np.random.seed(args.seed)
+
+tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+
+
+async def main_async():
     # Validate API keys based on selected search engine
     if args.search_engine == "bing" and not args.bing_subscription_key:
         print("Error: Bing search engine is selected, but --bing_subscription_key is not provided.")
